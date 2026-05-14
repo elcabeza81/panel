@@ -111,6 +111,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .ccnum    { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
 .ccwho    { font-size: 12px; font-weight: 900; display: inline-block; padding: 2px 5px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; }
 .cchelper { font-size: 9px; font-weight: 900; color: #ff3333; text-transform: uppercase; letter-spacing: 0.3px; }
+.cchelper-hoy { font-size: 14px; font-weight: 900; color: #ff3333; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
 .cc-papa  { background: rgba(88,166,255,0.1); }
 .cc-mama  { background: rgba(247,120,161,0.1); }
 .cc-today { -webkit-box-shadow: inset 0 0 0 2px #e3b341; box-shadow: inset 0 0 0 2px #e3b341; }
@@ -202,6 +203,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <div class="clabel">Las nenas estan hoy con:</div>
     <div id="cc-name" class="cname">...</div>
     <div id="cc-next" class="cnext"></div>
+    <div id="cc-helper-hoy" class="cchelper-hoy" style="display:none"></div>
   </div>
   <div class="rowcards">
     <div class="mcard">
@@ -541,7 +543,12 @@ function getCustody(ds) {
   return CYCLE[((diff % 14) + 14) % 14];
 }
 function getHelperLocation(ds) {
-  var who = getCustody(ds);
+  // Maria va a donde durmieron las nenas = la casa de AYER
+  var parts = ds.split('-');
+  var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
+  d.setDate(d.getDate() - 1); // retrocede un dia
+  var ydKey = d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+  var who = getCustody(ydKey);
   if (who === 'papa') return 'Prados';
   if (who === 'mama') return 'Aires';
   return '';
@@ -676,6 +683,17 @@ function renderHoy() {
     var diff = Math.round((nc.date.getTime()-d.getTime())/86400000); var wl = nc.who==='papa'?'PAPA':'MAMA';
     nx.innerHTML = diff<=1 ? 'Manana pasan con '+wl : 'Proximo cambio en '+diff+' dias — '+DAYS[nc.date.getDay()]+' con '+wl;
   } else nx.innerHTML = '';
+  // Donde va Maria hoy
+  var mariaHoy = getHelperLocation(k);
+  var mariaEl  = document.getElementById('cc-helper-hoy');
+  if (mariaEl) {
+    if (mariaHoy) {
+      mariaEl.innerHTML  = 'Maria va a ' + mariaHoy;
+      mariaEl.style.display = '';
+    } else {
+      mariaEl.style.display = 'none';
+    }
+  }
 
   var budget = C.budget; var cash = totalCash(); var rem = budget - cash;
   var re = document.getElementById('h-rem'); var de = document.getElementById('h-dig');
