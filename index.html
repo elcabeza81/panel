@@ -149,6 +149,14 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .mbtn-c  { -webkit-flex: 1; flex: 1; background: none; border: 1px solid #30363d; border-radius: 8px; color: #7d8590; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700; padding: 10px; cursor: pointer; margin-right: 8px; }
 .mbtn-ok { -webkit-flex: 1; flex: 1; background: #e3b341; color: #0d1117; border: none; border-radius: 8px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 900; padding: 10px; cursor: pointer; }
 .empty-state { text-align: center; color: #7d8590; padding: 20px; font-size: 14px; }
+.list-item { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 11px 0; border-bottom: 1px solid #30363d; }
+.list-item:last-child { border-bottom: none; }
+.list-cb { width: 26px; height: 26px; border-radius: 7px; border: 2px solid #30363d; cursor: pointer; margin-right: 12px; -webkit-flex-shrink: 0; flex-shrink: 0; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; font-size: 14px; font-weight: 900; -webkit-transition: all 0.15s; transition: all 0.15s; }
+.list-cb.done { background: #3fb950; border-color: #3fb950; color: #0d1117; }
+.list-name { -webkit-flex: 1; flex: 1; font-size: 14px; }
+.list-name.done { text-decoration: line-through; color: #7d8590; }
+.list-del { background: none; border: none; color: #7d8590; font-size: 16px; cursor: pointer; padding: 4px 6px; }
+.list-count { font-size: 11px; color: #7d8590; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -193,6 +201,10 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <button class="navbtn"     onclick="showView('pres')">$ Mes</button>
       <button class="navbtn"     onclick="showView('cal')">Cal</button>
       <button class="navbtn"     onclick="showView('alt')">Alertas</button>
+      <button class="navbtn"     onclick="showView('lista')">Compras</button>
+    </div>
+  </div>
+</div>
     </div>
   </div>
 </div>
@@ -359,6 +371,30 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <button class="notif-btn" onclick="reqPerms()">Activar notificaciones</button>
     <div id="notif-st" style="font-size:11px;color:#7d8590;margin-top:6px"></div>
   </div>
+  <div id="v-lista" class="view">
+  <div class="card">
+    <div class="stitle">Agregar a la lista</div>
+    <div class="frow" style="margin-bottom:0">
+      <input type="text" id="list-inp" placeholder="Ej: leche, pan, detergente..." class="full-input" style="margin-right:8px">
+      <button class="addbtn" onclick="addListItem()">+</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="setrow">
+      <div class="stitle" style="margin:0">
+        Pendientes <span class="list-count" id="list-pending-count"></span>
+      </div>
+      <button class="setbtn" onclick="clearAcquired()">Limpiar adquiridos</button>
+    </div>
+    <div id="list-pending"></div>
+  </div>
+  <div class="card" id="list-done-card" style="display:none">
+    <div class="stitle" style="color:#3fb950">
+      Ya en el carrito <span class="list-count" id="list-done-count"></span>
+    </div>
+    <div id="list-done"></div>
+  </div>
+</div>
   <div class="card">
     <div class="stitle">Alertas automaticas</div>
     <div class="auto-r">
@@ -644,7 +680,7 @@ function saveBud() {
 // VIEWS
 // ============================================================
 function showView(name) {
-  var ns = ['hoy','pres','cal','alt'];
+  var ns = ['hoy','pres','cal','alt','lista'];
   for (var i = 0; i < ns.length; i++) document.getElementById('v-'+ns[i]).className = 'view' + (ns[i]===name?' act':'');
   var bs = document.querySelectorAll('.navbtn');
   for (var j = 0; j < bs.length; j++) bs[j].className = 'navbtn' + (ns[j]===name?' act':'');
@@ -652,6 +688,7 @@ function showView(name) {
   if (name==='pres') renderBudget();
   if (name==='cal')  renderCal();
   if (name==='alt')  renderAlerts();
+  if (name === 'lista') renderLista();
 }
 
 // ============================================================
@@ -922,7 +959,82 @@ function checkRems() {
 
 document.getElementById('pin-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) submitPin(); };
 document.getElementById('bud-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) saveBud(); };
+document.getElementById('list-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) addListItem(); };
 
+// ============================================================
+// LISTA DE COMPRAS
+// ============================================================
+function getList() {
+  var r = localStorage.getItem('shopping_list');
+  if (!r) return [];
+  try { return JSON.parse(r); } catch(x) { return []; }
+}
+function saveList(arr) { localStorage.setItem('shopping_list', JSON.stringify(arr)); }
+
+function addListItem() {
+  var inp = document.getElementById('list-inp');
+  var name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+  var list = getList();
+  list.unshift({ id: 'li' + Date.now(), name: name, done: false });
+  saveList(list);
+  inp.value = '';
+  inp.focus();
+  renderLista();
+}
+
+function toggleListItem(id) {
+  var list = getList();
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id === id) { list[i].done = !list[i].done; break; }
+  }
+  saveList(list);
+  renderLista();
+}
+
+function delListItem(id) {
+  saveList(getList().filter(function(i) { return i.id !== id; }));
+  renderLista();
+}
+
+function clearAcquired() {
+  if (!confirm('Limpiar todos los items adquiridos?')) return;
+  saveList(getList().filter(function(i) { return !i.done; }));
+  renderLista();
+}
+
+function listItemHtml(item) {
+  var cbCls  = 'list-cb' + (item.done ? ' done' : '');
+  var nameCls = 'list-name' + (item.done ? ' done' : '');
+  var check  = item.done ? '&#10003;' : '';
+  return '<div class="list-item">' +
+    '<div class="' + cbCls + '" onclick="toggleListItem(\'' + item.id + '\')">' + check + '</div>' +
+    '<span class="' + nameCls + '">' + item.name + '</span>' +
+    '<button class="list-del" onclick="delListItem(\'' + item.id + '\')">&#x2715;</button>' +
+  '</div>';
+}
+
+function renderLista() {
+  var list    = getList();
+  var pending = list.filter(function(i) { return !i.done; });
+  var done    = list.filter(function(i) { return i.done; });
+
+  var pEl = document.getElementById('list-pending');
+  var dEl = document.getElementById('list-done');
+  var dCard = document.getElementById('list-done-card');
+  var pCount = document.getElementById('list-pending-count');
+  var dCount = document.getElementById('list-done-count');
+
+  if (pCount) pCount.innerHTML = pending.length ? '(' + pending.length + ')' : '';
+  if (dCount) dCount.innerHTML = done.length ? '(' + done.length + ')' : '';
+
+  pEl.innerHTML = pending.length
+    ? (function() { var h = ''; for (var i = 0; i < pending.length; i++) h += listItemHtml(pending[i]); return h; })()
+    : '<div class="empty-state">Lista vacia — agrega el primer item arriba</div>';
+
+  dCard.style.display = done.length ? '' : 'none';
+  dEl.innerHTML = (function() { var h = ''; for (var i = 0; i < done.length; i++) h += listItemHtml(done[i]); return h; })();
+}
 // ============================================================
 // INIT
 // ============================================================
