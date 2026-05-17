@@ -1004,7 +1004,7 @@ function renderHoy() {
     var diff = Math.round((nc.date.getTime()-d.getTime())/86400000);
     var wl = whoCalendarLabel(nc.who);
     if (diff <= 1) {
-      nx.innerHTML = 'Manana pasan con <em>' + wl + '</em>';
+      nx.innerHTML = 'Mañana pasan con <em>' + wl + '</em>';
     } else {
       nx.innerHTML = 'Proximo cambio en ' + diff + ' dias — ' + DAYS[nc.date.getDay()] + ' con <em>' + wl + '</em>';
     }
