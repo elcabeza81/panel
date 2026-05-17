@@ -31,6 +31,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .ccard-p { background: #0d2647; border: 2px solid #58a6ff; }
 .ccard-m { background: #3a0d20; border: 2px solid #f778a1; }
 .clabel  { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #7d8590; margin-bottom: 8px; }
+#cc-label { text-transform: none; letter-spacing: 0.5px; font-size: 11px; }
 .cname   { font-size: 58px; font-weight: 900; line-height: 1; margin-bottom: 6px; }
 .cname-p { color: #58a6ff; } .cname-m { color: #f778a1; }
 .cnext   { font-size: 16px; font-weight: 800; color: #e6edf3; line-height: 1.4; margin-top: 8px; }
@@ -455,8 +456,12 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       </div>
     </div>
     <div class="cfg-row">
-      <label>Menores (@ = plural con s, ej: l@s chic@s)</label>
+      <label>Menores (plural, con @ visible: l@s chic@s)</label>
       <input type="text" id="cfg-kids" placeholder="l@s chic@s">
+    </div>
+    <div class="cfg-row">
+      <label>Menores (singular, si es uno solo)</label>
+      <input type="text" id="cfg-kids-sing" placeholder="l@ chic@">
     </div>
     <div class="cfg-row">
       <label>Cantidad de menores</label>
@@ -547,7 +552,7 @@ var C = {
   shoppingList: [], shareShopping: true,
   panelUi: {
     papaName: 'Juan', mamaName: 'Maria',
-    kidsTemplate: 'l@s chic@s', kidsCount: 2,
+    kidsTemplate: 'l@s chic@s', kidsTemplateSingular: 'l@ chic@', kidsCount: 2,
     country: 'AR', helperName: 'Maria',
     ownerHouse: 'Prados', exHouse: 'Aires', hasHelper: true
   }
@@ -576,10 +581,15 @@ function getCatLabels() {
   return { comida:'Comida', servicios:'Servicios', nenas:k, transporte:'Transporte', salud:'Salud', otros:'Otros' };
 }
 function kidsLabel() {
-  var t = (C.panelUi && C.panelUi.kidsTemplate) ? C.panelUi.kidsTemplate : 'l@s chic@s';
-  var n = (C.panelUi && C.panelUi.kidsCount) ? +C.panelUi.kidsCount : 2;
-  if (n === 1) return t.replace(/@/g, '');
-  return t.replace(/@/g, 's');
+  var p = C.panelUi || {};
+  if ((+p.kidsCount || 2) === 1) {
+    return p.kidsTemplateSingular || 'l@ chic@';
+  }
+  return p.kidsTemplate || 'l@s chic@s';
+}
+function isHelperWorkDay(d) {
+  var dow = d.getDay();
+  return dow !== 0 && dow !== 6;
 }
 function whoDisplay(who) {
   if (who === 'papa') return (C.panelUi.papaName || 'Papa').toUpperCase();
@@ -663,6 +673,53 @@ function callAPI(params, cb) {
 }
 function setSyncDot(st) { document.getElementById('sync-dot').className = 'sync-dot ' + (st||''); }
 
+function parseShoppingList(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try { var a = JSON.parse(raw); return Array.isArray(a) ? a : []; } catch (x) { return []; }
+}
+function getLocalShopping() {
+  var sl = localStorage.getItem('shopping_list');
+  if (!sl) return [];
+  try { return JSON.parse(sl); } catch (x) { return []; }
+}
+function saveShoppingToServer(list, cb) {
+  if (!USE_API) { if (cb) cb(null); return; }
+  var json = JSON.stringify(list || []);
+  setSyncDot('busy');
+  fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'saveShopping', list: json })
+  }).then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data.error) {
+        setSyncDot('err');
+        if (cb) cb(new Error(data.error), data);
+        return;
+      }
+      setSyncDot('ok');
+      if (cb) cb(null, data);
+    })
+    .catch(function() {
+      callAPI({ action: 'saveShopping', list: json }, function(err, data) {
+        if (cb) cb(err, data);
+      });
+    });
+}
+function mergeShoppingFromServer(serverList) {
+  var server = parseShoppingList(serverList);
+  var local = getLocalShopping();
+  if (server.length === 0 && local.length > 0) {
+    C.shoppingList = local;
+    saveShoppingToServer(local, function(err) {
+      if (err) showBanner('Lista guardada en este dispositivo; error al subir a la nube');
+    });
+    return;
+  }
+  C.shoppingList = server;
+}
+
 // ============================================================
 // DATA
 // ============================================================
@@ -674,7 +731,7 @@ function loadAll() {
       C.expenses  = data.expenses  || [];
       C.budget    = data.budget    || 3000000;
       C.overrides = data.overrides || {};
-      C.shoppingList = data.shoppingList || [];
+      mergeShoppingFromServer(data.shoppingList);
       C.shareShopping = data.shareShopping !== false;
       if (data.panelUi) C.panelUi = mergeUi(data.panelUi);
       var lr = getLocalRems(); var ar = data.reminders || [];
@@ -752,9 +809,11 @@ function getCustody(ds) {
   return CYCLE[((diff % 14) + 14) % 14];
 }
 function getHelperLocation(ds) {
-  if (!C.panelUi.hasHelper) return '';
+  if (!C.panelUi || !C.panelUi.hasHelper) return '';
   var parts = ds.split('-');
-  var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
+  var dayDate = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
+  if (!isHelperWorkDay(dayDate)) return '';
+  var d = new Date(dayDate.getTime());
   d.setDate(d.getDate() - 1);
   var ydKey = d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
   var who = getCustody(ydKey);
@@ -1198,12 +1257,11 @@ document.getElementById('list-inp').onkeyup = function(e) { if((e.keyCode||e.whi
 // ============================================================
 function persistShopping(cb) {
   toLocal();
-  if (USE_API) {
-    callAPI({ action: 'saveShopping', list: JSON.stringify(C.shoppingList || []) }, function(err) {
-      if (err) setSyncDot('err');
-      if (cb) cb(err);
-    });
-  } else if (cb) cb(null);
+  if (!USE_API) { if (cb) cb(null); return; }
+  saveShoppingToServer(C.shoppingList || [], function(err) {
+    if (err) showBanner('No se pudo guardar la lista en la nube. Reintenta.');
+    if (cb) cb(err);
+  });
 }
 function toggleShareShopping() {
   if (!isFullAccess()) { openPin(); return; }
@@ -1295,6 +1353,7 @@ function applyUiForm() {
   el = document.getElementById('cfg-papa'); if (el) el.value = p.papaName || '';
   el = document.getElementById('cfg-mama'); if (el) el.value = p.mamaName || '';
   el = document.getElementById('cfg-kids'); if (el) el.value = p.kidsTemplate || '';
+  el = document.getElementById('cfg-kids-sing'); if (el) el.value = p.kidsTemplateSingular || '';
   el = document.getElementById('cfg-kids-count'); if (el) el.value = '' + (p.kidsCount || 2);
   el = document.getElementById('cfg-country'); if (el) el.value = p.country || 'AR';
 }
@@ -1303,6 +1362,7 @@ function savePanelUi() {
   C.panelUi.papaName = (document.getElementById('cfg-papa').value || 'Papa').trim();
   C.panelUi.mamaName = (document.getElementById('cfg-mama').value || 'Mama').trim();
   C.panelUi.kidsTemplate = (document.getElementById('cfg-kids').value || 'l@s chic@s').trim();
+  C.panelUi.kidsTemplateSingular = (document.getElementById('cfg-kids-sing').value || 'l@ chic@').trim();
   C.panelUi.kidsCount = parseInt(document.getElementById('cfg-kids-count').value, 10) || 2;
   C.panelUi.country = document.getElementById('cfg-country').value || 'AR';
   toLocal();
@@ -1312,6 +1372,7 @@ function savePanelUi() {
       papaName: C.panelUi.papaName,
       mamaName: C.panelUi.mamaName,
       kidsTemplate: C.panelUi.kidsTemplate,
+      kidsTemplateSingular: C.panelUi.kidsTemplateSingular,
       kidsCount: C.panelUi.kidsCount,
       country: C.panelUi.country,
       helperName: C.panelUi.helperName,
