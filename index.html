@@ -686,8 +686,10 @@ function getLocalShopping() {
 function saveShoppingToServer(list, cb) {
   if (!USE_API) { if (cb) cb(null); return; }
   var json = JSON.stringify(list || []);
-  setSyncDot('busy');
-  fetch(API_URL, {
+  callAPI({ action: 'saveShopping', list: json }, function(err, data) {
+    if (cb) cb(err, data);
+  });
+}
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action: 'saveShopping', list: json })
