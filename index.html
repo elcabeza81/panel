@@ -949,8 +949,8 @@ function renderHoy() {
   if (lbl) lbl.innerHTML = custodyHoyLabel();
   var d = new Date(); var k = dateKey(d); var who = getCustody(k);
   var cc = document.getElementById('cc'); var nm = document.getElementById('cc-name'); var nx = document.getElementById('cc-next');
-  if (who==='papa')      { cc.className='ccard ccard-p'; nm.className='cname cname-p'; nm.innerHTML=whoDisplay('papa'); }
-  else if (who==='mama') { cc.className='ccard ccard-m'; nm.className='cname cname-m'; nm.innerHTML=whoDisplay('mama'); }
+  if (who==='papa')      { cc.className='ccard ccard-p'; nm.className='cname cname-p'; nm.innerHTML='PAPA'; }
+  else if (who==='mama') { cc.className='ccard ccard-m'; nm.className='cname cname-m'; nm.innerHTML='MAMA'; }
   else                   { cc.className='ccard ccard-n'; nm.className='cname'; nm.innerHTML='Sin datos'; }
 
   var s = new Date(d); s.setDate(s.getDate()+1); var nc = null;
