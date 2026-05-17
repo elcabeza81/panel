@@ -168,7 +168,6 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .share-toggle.on { background: #3fb950; }
 .share-toggle::after { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #7d8590; border-radius: 50%; -webkit-transition: .2s; transition: .2s; }
 .share-toggle.on::after { left: 25px; background: #0d1117; }
-#v-lista-dup { display: none !important; height: 0; overflow: hidden; }
 
 @media (max-width: 520px) {
   .hdr { -webkit-flex-wrap: wrap; flex-wrap: wrap; padding: 8px 10px; }
@@ -476,30 +475,6 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     </div>
     <button class="addbtn" style="width:100%" onclick="savePanelUi()">Guardar personalizacion</button>
   </div>
-  <div id="v-lista-dup" hidden style="display:none">
-  <div class="card">
-    <div class="stitle">Agregar a la lista</div>
-    <div class="frow" style="margin-bottom:0">
-      <input type="text" id="list-inp" placeholder="Ej: leche, pan, detergente..." class="full-input" style="margin-right:8px">
-      <button class="addbtn" onclick="addListItem()">+</button>
-    </div>
-  </div>
-  <div class="card">
-    <div class="setrow">
-      <div class="stitle" style="margin:0">
-        Pendientes <span class="list-count" id="list-pending-count"></span>
-      </div>
-      <button class="setbtn" onclick="clearAcquired()">Limpiar adquiridos</button>
-    </div>
-    <div id="list-pending"></div>
-  </div>
-  <div class="card" id="list-done-card" style="display:none">
-    <div class="stitle" style="color:#3fb950">
-      Ya en el carrito <span class="list-count" id="list-done-count"></span>
-    </div>
-    <div id="list-done"></div>
-  </div>
-</div>
   <div class="card">
     <div class="stitle">Alertas automaticas</div>
     <div class="auto-r">
@@ -690,25 +665,7 @@ function saveShoppingToServer(list, cb) {
     if (cb) cb(err, data);
   });
 }
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'saveShopping', list: json })
-  }).then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data && data.error) {
-        setSyncDot('err');
-        if (cb) cb(new Error(data.error), data);
-        return;
-      }
-      setSyncDot('ok');
-      if (cb) cb(null, data);
-    })
-    .catch(function() {
-      callAPI({ action: 'saveShopping', list: json }, function(err, data) {
-        if (cb) cb(err, data);
-      });
-    });
-}
+
 function mergeShoppingFromServer(serverList) {
   var server = parseShoppingList(serverList);
   var local = getLocalShopping();
