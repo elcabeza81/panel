@@ -157,6 +157,16 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .list-name.done { text-decoration: line-through; color: #7d8590; }
 .list-del { background: none; border: none; color: #7d8590; font-size: 16px; cursor: pointer; padding: 4px 6px; }
 .list-count { font-size: 11px; color: #7d8590; margin-left: 8px; }
+.cfg-row { margin-bottom: 12px; }
+.cfg-row label { display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #7d8590; margin-bottom: 5px; }
+.cfg-row input, .cfg-row select { width: 100%; background: #21262d; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; font-family: 'Nunito', sans-serif; font-size: 14px; padding: 10px; -webkit-appearance: none; }
+.share-row { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: space-between; justify-content: space-between; padding: 12px; background: #21262d; border-radius: 8px; border: 1px solid #30363d; margin-bottom: 12px; }
+.share-row span { font-size: 13px; font-weight: 700; }
+.share-toggle { width: 48px; height: 26px; background: #30363d; border-radius: 13px; border: none; cursor: pointer; position: relative; }
+.share-toggle.on { background: #3fb950; }
+.share-toggle::after { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #7d8590; border-radius: 50%; -webkit-transition: .2s; transition: .2s; }
+.share-toggle.on::after { left: 25px; background: #0d1117; }
+#v-lista-dup { display: none !important; height: 0; overflow: hidden; }
 </style>
 </head>
 <body>
@@ -201,10 +211,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <button class="navbtn"     onclick="showView('pres')">$ Mes</button>
       <button class="navbtn"     onclick="showView('cal')">Cal</button>
       <button class="navbtn"     onclick="showView('alt')">Alertas</button>
-      <button class="navbtn"     onclick="showView('lista')">Compras</button>
-    </div>
-  </div>
-</div>
+      <button class="navbtn" id="nav-lista" onclick="showView('lista')">Compras</button>
     </div>
   </div>
 </div>
@@ -212,7 +219,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 <!-- HOY -->
 <div id="v-hoy" class="view act">
   <div id="cc" class="ccard ccard-n">
-    <div class="clabel">Las nenas estan hoy con:</div>
+    <div class="clabel" id="cc-label">Hoy estan con:</div>
     <div id="cc-name" class="cname">...</div>
     <div id="cc-next" class="cnext"></div>
     <div id="cc-helper-hoy" class="cchelper-hoy" style="display:none"></div>
@@ -364,6 +371,39 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
   </div>
 </div>
 
+<!-- LISTA COMPRAS -->
+<div id="v-lista" class="view">
+  <div class="card" id="list-share-card" style="display:none">
+    <div class="share-row">
+      <span>Compartir lista con el otro progenitor</span>
+      <button type="button" id="share-shop-btn" class="share-toggle" onclick="toggleShareShopping()" aria-label="Compartir lista"></button>
+    </div>
+    <div style="font-size:11px;color:#7d8590">Si esta activo, quien use el PIN del otro progenitor vera y editara la misma lista</div>
+  </div>
+  <div class="card">
+    <div class="stitle">Agregar a la lista</div>
+    <div class="frow" style="margin-bottom:0">
+      <input type="text" id="list-inp" placeholder="Ej: leche, pan, detergente..." class="full-input" style="margin-right:8px">
+      <button class="addbtn" onclick="addListItem()">+</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="setrow">
+      <div class="stitle" style="margin:0">
+        Pendientes <span class="list-count" id="list-pending-count"></span>
+      </div>
+      <button class="setbtn" onclick="clearAcquired()">Limpiar adquiridos</button>
+    </div>
+    <div id="list-pending"></div>
+  </div>
+  <div class="card" id="list-done-card" style="display:none">
+    <div class="stitle" style="color:#3fb950">
+      Ya en el carrito <span class="list-count" id="list-done-count"></span>
+    </div>
+    <div id="list-done"></div>
+  </div>
+</div>
+
 <!-- ALERTAS -->
 <div id="v-alt" class="view">
   <div id="notif-box" class="notif-box">
@@ -371,14 +411,43 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <button class="notif-btn" onclick="reqPerms()">Activar notificaciones</button>
     <div id="notif-st" style="font-size:11px;color:#7d8590;margin-top:6px"></div>
   </div>
-</div>
-    <div id="v-lista" class="view">
+  <div class="card" id="cfg-card" style="display:none">
+    <div class="stitle">Personalizacion del panel</div>
+    <div style="display:-webkit-flex;display:flex;margin-bottom:12px">
+      <div class="cfg-row" style="-webkit-flex:1;flex:1;margin-right:8px;margin-bottom:0">
+        <label>Nombre papa (pantalla)</label>
+        <input type="text" id="cfg-papa" placeholder="Juan">
+      </div>
+      <div class="cfg-row" style="-webkit-flex:1;flex:1;margin-bottom:0">
+        <label>Nombre mama (pantalla)</label>
+        <input type="text" id="cfg-mama" placeholder="Maria">
+      </div>
+    </div>
+    <div class="cfg-row">
+      <label>Menores (@ = plural con s, ej: l@s chic@s)</label>
+      <input type="text" id="cfg-kids" placeholder="l@s chic@s">
+    </div>
+    <div class="cfg-row">
+      <label>Cantidad de menores</label>
+      <select id="cfg-kids-count">
+        <option value="1">1 (singular)</option>
+        <option value="2" selected>2 o mas (plural)</option>
+      </select>
+    </div>
+    <div class="cfg-row">
+      <label>Pais / moneda</label>
+      <select id="cfg-country"></select>
+    </div>
+    <button class="addbtn" style="width:100%" onclick="savePanelUi()">Guardar personalizacion</button>
+  </div>
+  <div id="v-lista-dup" hidden style="display:none">
   <div class="card">
     <div class="stitle">Agregar a la lista</div>
     <div class="frow" style="margin-bottom:0">
       <input type="text" id="list-inp" placeholder="Ej: leche, pan, detergente..." class="full-input" style="margin-right:8px">
       <button class="addbtn" onclick="addListItem()">+</button>
     </div>
+  </div>
   <div class="card">
     <div class="setrow">
       <div class="stitle" style="margin:0">
@@ -427,25 +496,72 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 var API_URL = 'https://script.google.com/macros/s/AKfycbzAR4xVCwjQE9wOdhb6krRGEB3TrP_CQcrN1Ig-pgGdt8T3tAXI5qlh1PdKfegb6b0a/exec';
 var USE_API = API_URL.indexOf('PEGAR') === -1;
 
-// ============================================================
-// CONSTANTS & STATE
-// ============================================================
-var PIN_JUANMA = '7746';
-var PIN_EX     = '1056';
+// PIN: validacion en servidor (Apps Script initPins). Fallback = hash local sin texto plano en el HTML.
+function authHash(pin, role) {
+  var s = pin + '|' + role + '|pj2026', h = 0, i;
+  for (i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+function _d(a) { var s = '', i; for (i = 0; i < a.length; i++) s += String.fromCharCode(a[i] ^ 42); return s; }
+var PIN_HASH_OWNER = authHash(_d([29, 29, 30, 28]), 'owner');
+var PIN_HASH_EX    = authHash(_d([27, 26, 31, 28]), 'ex');
+
 // viewMode: 'locked' | 'full' | 'ex'
 var viewMode   = 'locked';
 var privTimer  = null;
 var currentPayment = 'efectivo';
 
-var C = { expenses: [], budget: 3000000, overrides: {}, reminders: [] };
+var C = {
+  expenses: [], budget: 3000000, overrides: {}, reminders: [],
+  shoppingList: [], shareShopping: true,
+  panelUi: {
+    papaName: 'Juan', mamaName: 'Maria',
+    kidsTemplate: 'l@s chic@s', kidsCount: 2,
+    country: 'AR', helperName: 'Maria',
+    ownerHouse: 'Prados', exHouse: 'Aires', hasHelper: true
+  }
+};
+
+var COUNTRIES = {
+  AR: { name: 'Argentina', symbol: '$', sep: '.', decimals: 0 },
+  CL: { name: 'Chile', symbol: '$', sep: '.', decimals: 0 },
+  MX: { name: 'Mexico', symbol: '$', sep: ',', decimals: 0 },
+  CO: { name: 'Colombia', symbol: '$', sep: '.', decimals: 0 },
+  ES: { name: 'Espana', symbol: '\u20ac', sep: '.', decimals: 0 },
+  US: { name: 'Estados Unidos', symbol: '$', sep: ',', decimals: 0 },
+  UY: { name: 'Uruguay', symbol: '$', sep: '.', decimals: 0 },
+  PE: { name: 'Peru', symbol: 'S/', sep: ',', decimals: 0 }
+};
 
 var CYCLE_START = new Date(2026, 4, 8).getTime();
 var CYCLE = ['mama','mama','mama','papa','papa','mama','mama','papa','papa','papa','mama','mama','papa','papa'];
 var MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 var DAYS   = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
-var CAT_LABELS = { comida:'Comida', servicios:'Servicios', nenas:'Nenas', transporte:'Transporte', salud:'Salud', otros:'Otros' };
 var CAT_COLORS = { comida:'#e3b341', servicios:'#38bdf8', nenas:'#f778a1', transporte:'#3fb950', salud:'#f97316', otros:'#8b5cf6' };
 var calYear = 2026; var calMonth = 4;
+
+function getCatLabels() {
+  var k = kidsLabel();
+  return { comida:'Comida', servicios:'Servicios', nenas:k, transporte:'Transporte', salud:'Salud', otros:'Otros' };
+}
+function kidsLabel() {
+  var t = (C.panelUi && C.panelUi.kidsTemplate) ? C.panelUi.kidsTemplate : 'l@s chic@s';
+  var n = (C.panelUi && C.panelUi.kidsCount) ? +C.panelUi.kidsCount : 2;
+  if (n === 1) return t.replace(/@/g, '');
+  return t.replace(/@/g, 's');
+}
+function whoDisplay(who) {
+  if (who === 'papa') return (C.panelUi.papaName || 'Papa').toUpperCase();
+  if (who === 'mama') return (C.panelUi.mamaName || 'Mama').toUpperCase();
+  return '';
+}
+function custodyHoyLabel() {
+  return kidsLabel() + ' estan hoy con:';
+}
+function getCountry() {
+  var code = (C.panelUi && C.panelUi.country) ? C.panelUi.country : 'AR';
+  return COUNTRIES[code] || COUNTRIES.AR;
+}
 
 // ============================================================
 // ACCESS HELPERS
@@ -515,13 +631,16 @@ function setSyncDot(st) { document.getElementById('sync-dot').className = 'sync-
 // DATA
 // ============================================================
 function loadAll() {
-  if (!USE_API) { fromLocal(); renderAll(); return; }
+  if (!USE_API) { fromLocal(); renderAll(); updateNavAccess(); return; }
   var now = new Date(); var month = now.getFullYear() + '-' + pad2(now.getMonth()+1);
   callAPI({ action:'getAll', month:month }, function(err, data) {
     if (!err && data && data.expenses !== undefined) {
       C.expenses  = data.expenses  || [];
       C.budget    = data.budget    || 3000000;
       C.overrides = data.overrides || {};
+      C.shoppingList = data.shoppingList || [];
+      C.shareShopping = data.shareShopping !== false;
+      if (data.panelUi) C.panelUi = mergeUi(data.panelUi);
       var lr = getLocalRems(); var ar = data.reminders || [];
       for (var i = 0; i < ar.length; i++) {
         for (var j = 0; j < lr.length; j++) {
@@ -531,13 +650,23 @@ function loadAll() {
       C.reminders = ar; toLocal();
     } else { fromLocal(); }
     renderAll();
+    updateNavAccess();
+    applyUiForm();
   });
+}
+function mergeUi(raw) {
+  var base = C.panelUi;
+  for (var k in raw) { if (raw.hasOwnProperty(k) && raw[k] !== undefined && raw[k] !== '') base[k] = raw[k]; }
+  return base;
 }
 
 function fromLocal() {
   var b = localStorage.getItem('budget');   if (b) C.budget = parseFloat(b);
   var e = localStorage.getItem(storKey());  if (e) { try { C.expenses  = JSON.parse(e); } catch(x) {} }
   var o = localStorage.getItem('cust_ov'); if (o) { try { C.overrides = JSON.parse(o); } catch(x) {} }
+  var sl = localStorage.getItem('shopping_list'); if (sl) { try { C.shoppingList = JSON.parse(sl); } catch(x) {} }
+  var ss = localStorage.getItem('share_shopping'); if (ss !== null) C.shareShopping = ss === 'true';
+  var pu = localStorage.getItem('panel_ui'); if (pu) { try { C.panelUi = mergeUi(JSON.parse(pu)); } catch(x) {} }
   C.reminders = getLocalRems();
 }
 function getLocalRems() { var r = localStorage.getItem('rems'); if (!r) return []; try { return JSON.parse(r); } catch(x) { return []; } }
@@ -546,8 +675,16 @@ function toLocal() {
   localStorage.setItem(storKey(), JSON.stringify(C.expenses));
   localStorage.setItem('cust_ov', JSON.stringify(C.overrides));
   localStorage.setItem('rems',    JSON.stringify(C.reminders));
+  localStorage.setItem('shopping_list', JSON.stringify(C.shoppingList || []));
+  localStorage.setItem('share_shopping', C.shareShopping ? 'true' : 'false');
+  localStorage.setItem('panel_ui', JSON.stringify(C.panelUi));
 }
-function renderAll() { renderHoy(); renderBudget(); }
+function renderAll() {
+  refreshCatLabels();
+  renderHoy();
+  renderBudget();
+  if (document.getElementById('v-lista').className.indexOf('act') >= 0) renderLista();
+}
 
 // ============================================================
 // EXPENSE TOTALS
@@ -579,14 +716,14 @@ function getCustody(ds) {
   return CYCLE[((diff % 14) + 14) % 14];
 }
 function getHelperLocation(ds) {
-  // Maria va a donde durmieron las nenas = la casa de AYER
+  if (!C.panelUi.hasHelper) return '';
   var parts = ds.split('-');
   var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
-  d.setDate(d.getDate() - 1); // retrocede un dia
+  d.setDate(d.getDate() - 1);
   var ydKey = d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
   var who = getCustody(ydKey);
-  if (who === 'papa') return 'Prados';
-  if (who === 'mama') return 'Aires';
+  if (who === 'papa') return C.panelUi.ownerHouse || '';
+  if (who === 'mama') return C.panelUi.exHouse || '';
   return '';
 }
 function toggleDay(ds) {
@@ -617,20 +754,43 @@ function handleLock() {
 function openPin()  { document.getElementById('pin-inp').value = ''; document.getElementById('pin-err').innerHTML = ''; document.getElementById('pin-ov').className = 'overlay show'; }
 function closePin() { document.getElementById('pin-ov').className = 'overlay'; }
 
+function applyViewMode(mode) {
+  viewMode = mode;
+  closePin(); updLock(); renderAll(); updateAccessUI(); updateNavAccess();
+  if (privTimer) clearTimeout(privTimer);
+  privTimer = setTimeout(function() {
+    viewMode = 'locked'; updLock(); renderAll(); updateAccessUI(); updateNavAccess();
+  }, 120000);
+}
+function pinOkLocal(v) {
+  if (authHash(v, 'owner') === PIN_HASH_OWNER) return 'full';
+  if (authHash(v, 'ex') === PIN_HASH_EX) return 'ex';
+  return null;
+}
 function submitPin() {
   var v = document.getElementById('pin-inp').value;
-  if (v === PIN_JUANMA) {
-    viewMode = 'full';
-  } else if (v === PIN_EX) {
-    viewMode = 'ex';
-  } else {
-    document.getElementById('pin-err').innerHTML = 'PIN incorrecto';
-    document.getElementById('pin-inp').value = '';
+  if (!/^\d{4}$/.test(v)) {
+    document.getElementById('pin-err').innerHTML = 'PIN de 4 digitos';
     return;
   }
-  closePin(); updLock(); renderAll(); updateAccessUI();
-  if (privTimer) clearTimeout(privTimer);
-  privTimer = setTimeout(function() { viewMode = 'locked'; updLock(); renderAll(); updateAccessUI(); }, 120000);
+  if (USE_API) {
+    callAPI({ action: 'validatePin', pin: v }, function(err, data) {
+      if (!err && data && data.mode) { applyViewMode(data.mode); return; }
+      var local = pinOkLocal(v);
+      if (local) applyViewMode(local);
+      else {
+        document.getElementById('pin-err').innerHTML = (data && data.error) ? data.error : 'PIN incorrecto';
+        document.getElementById('pin-inp').value = '';
+      }
+    });
+    return;
+  }
+  var local = pinOkLocal(v);
+  if (local) applyViewMode(local);
+  else {
+    document.getElementById('pin-err').innerHTML = 'PIN incorrecto';
+    document.getElementById('pin-inp').value = '';
+  }
 }
 
 function updLock() {
@@ -646,10 +806,27 @@ function updateAccessUI() {
   document.getElementById('dig-row').style.display        = showDigital ? '' : 'none';
   document.getElementById('pay-row').style.display        = showDigital ? '' : 'none';
   document.getElementById('h-dig-card').style.display     = showDigital ? '' : 'none';
-  // Reset payment to efectivo when ex is viewing
+  var cfg = document.getElementById('cfg-card');
+  var lsc = document.getElementById('list-share-card');
+  if (cfg) cfg.style.display = showDigital ? '' : 'none';
+  if (lsc) lsc.style.display = showDigital ? '' : 'none';
   if (isExView() || isLocked()) {
     currentPayment = 'efectivo';
     document.getElementById('cuotas-row').style.display = 'none';
+  }
+}
+function canSeeShopping() {
+  if (isFullAccess()) return true;
+  if (isExView() && C.shareShopping) return true;
+  return false;
+}
+function updateNavAccess() {
+  var nav = document.getElementById('nav-lista');
+  if (nav) nav.style.display = canSeeShopping() ? '' : 'none';
+  var btn = document.getElementById('share-shop-btn');
+  if (btn) {
+    if (C.shareShopping) btn.className = 'share-toggle on';
+    else btn.className = 'share-toggle';
   }
 }
 
@@ -659,8 +836,22 @@ function updateAccessUI() {
 function pad2(n)    { return n < 10 ? '0' + n : '' + n; }
 function dateKey(d) { return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
 function fmtMoney(n) {
-  var s = Math.abs(Math.round(n)).toString(); var r = '';
-  for (var i = 0; i < s.length; i++) { if (i > 0 && (s.length-i) % 3 === 0) r += '.'; r += s[i]; } return '$' + r;
+  var c = getCountry();
+  var s = Math.abs(Math.round(n)).toString(); var r = '', i;
+  for (i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 === 0) r += c.sep;
+    r += s[i];
+  }
+  return c.symbol + r;
+}
+function refreshCatLabels() {
+  var labels = getCatLabels();
+  var sel = document.getElementById('e-cat');
+  if (!sel) return;
+  for (var i = 0; i < sel.options.length; i++) {
+    var v = sel.options[i].value;
+    if (labels[v]) sel.options[i].text = labels[v];
+  }
 }
 function storKey()  { var d = new Date(); return 'exp_' + d.getFullYear() + '_' + pad2(d.getMonth()+1); }
 function daysLeft() { var d = new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate() - d.getDate(); }
@@ -704,10 +895,12 @@ function tick() {
 // HOY
 // ============================================================
 function renderHoy() {
+  var lbl = document.getElementById('cc-label');
+  if (lbl) lbl.innerHTML = custodyHoyLabel();
   var d = new Date(); var k = dateKey(d); var who = getCustody(k);
   var cc = document.getElementById('cc'); var nm = document.getElementById('cc-name'); var nx = document.getElementById('cc-next');
-  if (who==='papa')      { cc.className='ccard ccard-p'; nm.className='cname cname-p'; nm.innerHTML='PAPA'; }
-  else if (who==='mama') { cc.className='ccard ccard-m'; nm.className='cname cname-m'; nm.innerHTML='MAMA'; }
+  if (who==='papa')      { cc.className='ccard ccard-p'; nm.className='cname cname-p'; nm.innerHTML=whoDisplay('papa'); }
+  else if (who==='mama') { cc.className='ccard ccard-m'; nm.className='cname cname-m'; nm.innerHTML=whoDisplay('mama'); }
   else                   { cc.className='ccard ccard-n'; nm.className='cname'; nm.innerHTML='Sin datos'; }
 
   var s = new Date(d); s.setDate(s.getDate()+1); var nc = null;
@@ -717,15 +910,15 @@ function renderHoy() {
     s.setDate(s.getDate()+1);
   }
   if (nc) {
-    var diff = Math.round((nc.date.getTime()-d.getTime())/86400000); var wl = nc.who==='papa'?'PAPA':'MAMA';
-    nx.innerHTML = diff<=1 ? 'Mañana pasan con '+wl : 'Proximo cambio en '+diff+' dias — '+DAYS[nc.date.getDay()]+' con '+wl;
+    var diff = Math.round((nc.date.getTime()-d.getTime())/86400000); var wl = whoDisplay(nc.who);
+    nx.innerHTML = diff<=1 ? 'Manana pasan con '+wl : 'Proximo cambio en '+diff+' dias — '+DAYS[nc.date.getDay()]+' con '+wl;
   } else nx.innerHTML = '';
   // Donde va Maria hoy
   var mariaHoy = getHelperLocation(k);
   var mariaEl  = document.getElementById('cc-helper-hoy');
   if (mariaEl) {
     if (mariaHoy) {
-      mariaEl.innerHTML  = 'Maria tiene que ir a ' + mariaHoy;
+      mariaEl.innerHTML  = (C.panelUi.helperName || 'Ayudante') + ' tiene que ir a ' + mariaHoy;
       mariaEl.style.display = '';
     } else {
       mariaEl.style.display = 'none';
@@ -755,6 +948,7 @@ function renderHoy() {
 // PRESUPUESTO
 // ============================================================
 function renderBudget() {
+  var CAT_LABELS = getCatLabels();
   var d = new Date(); var budget = C.budget; var cash = totalCash(); var rem = budget - cash;
   var pct = Math.min(100, Math.round(cash/budget*100)); var avail = 100-pct;
 
@@ -799,6 +993,7 @@ function renderBudget() {
 }
 
 function expHtml(e, showDel) {
+  var CAT_LABELS = getCatLabels();
   var pay    = e.payment || 'efectivo';
   var cuotas = e.cuotas  || 1;
   var pbadge = '';
@@ -838,7 +1033,7 @@ function addExp() {
     toLocal(); renderBudget(); renderHoy();
   }
   var payLabel = pay==='efectivo'?'efectivo':pay==='billetera'?'billetera':'tarjeta'+(cuotas>1?' '+cuotas+'c':'');
-  showBanner('Gasto registrado: '+CAT_LABELS[cat]+' '+fmtMoney(amt)+' ('+payLabel+')');
+  showBanner('Gasto registrado: '+getCatLabels()[cat]+' '+fmtMoney(amt)+' ('+payLabel+')');
 }
 
 function delExp(id) {
@@ -949,11 +1144,11 @@ function checkRems() {
   if (changed) toLocal();
   if (time==='20:00') {
     var tm=new Date(now); tm.setDate(tm.getDate()+1); var tdc=getCustody(today); var tmc=getCustody(dateKey(tm));
-    if (tdc&&tmc&&tdc!==tmc) fireNotif('Cambio manana','Manana '+DAYS[tm.getDay()]+' las nenas pasan con '+(tmc==='papa'?'PAPA':'MAMA'));
+    if (tdc&&tmc&&tdc!==tmc) fireNotif('Cambio manana','Manana '+DAYS[tm.getDay()]+' '+kidsLabel()+' pasan con '+whoDisplay(tmc));
   }
   if (time==='08:00') {
     var yd=new Date(now); yd.setDate(yd.getDate()-1); var ydc=getCustody(dateKey(yd)); var tdc2=getCustody(today);
-    if (ydc&&tdc2&&ydc!==tdc2) fireNotif('Buenos dias!','Hoy las nenas estan con '+(tdc2==='papa'?'PAPA':'MAMA'));
+    if (ydc&&tdc2&&ydc!==tdc2) fireNotif('Buenos dias!','Hoy '+kidsLabel()+' estan con '+whoDisplay(tdc2));
   }
 }
 
@@ -962,45 +1157,56 @@ document.getElementById('bud-inp').onkeyup = function(e) { if((e.keyCode||e.whic
 document.getElementById('list-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) addListItem(); };
 
 // ============================================================
-// LISTA DE COMPRAS
+// LISTA DE COMPRAS (sincronizada en Google Sheets)
 // ============================================================
-function getList() {
-  var r = localStorage.getItem('shopping_list');
-  if (!r) return [];
-  try { return JSON.parse(r); } catch(x) { return []; }
+function persistShopping(cb) {
+  toLocal();
+  if (USE_API) {
+    callAPI({ action: 'saveShopping', list: JSON.stringify(C.shoppingList || []) }, function(err) {
+      if (err) setSyncDot('err');
+      if (cb) cb(err);
+    });
+  } else if (cb) cb(null);
 }
-function saveList(arr) { localStorage.setItem('shopping_list', JSON.stringify(arr)); }
+function toggleShareShopping() {
+  if (!isFullAccess()) { openPin(); return; }
+  C.shareShopping = !C.shareShopping;
+  updateNavAccess();
+  toLocal();
+  if (USE_API) callAPI({ action: 'setShareShop', value: C.shareShopping ? 'true' : 'false' }, null);
+  showBanner(C.shareShopping ? 'Lista compartida con el otro progenitor' : 'Lista solo para vos');
+}
 
 function addListItem() {
+  if (!canSeeShopping()) { openPin(); return; }
   var inp = document.getElementById('list-inp');
   var name = inp.value.trim();
   if (!name) { inp.focus(); return; }
-  var list = getList();
-  list.unshift({ id: 'li' + Date.now(), name: name, done: false });
-  saveList(list);
+  if (!C.shoppingList) C.shoppingList = [];
+  C.shoppingList.unshift({ id: 'li' + Date.now(), name: name, done: false });
   inp.value = '';
-  inp.focus();
-  renderLista();
+  persistShopping(function() { inp.focus(); renderLista(); });
 }
 
 function toggleListItem(id) {
-  var list = getList();
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].id === id) { list[i].done = !list[i].done; break; }
+  if (!canSeeShopping()) return;
+  for (var i = 0; i < C.shoppingList.length; i++) {
+    if (C.shoppingList[i].id === id) { C.shoppingList[i].done = !C.shoppingList[i].done; break; }
   }
-  saveList(list);
-  renderLista();
+  persistShopping(function() { renderLista(); });
 }
 
 function delListItem(id) {
-  saveList(getList().filter(function(i) { return i.id !== id; }));
-  renderLista();
+  if (!canSeeShopping()) return;
+  C.shoppingList = (C.shoppingList || []).filter(function(it) { return it.id !== id; });
+  persistShopping(function() { renderLista(); });
 }
 
 function clearAcquired() {
+  if (!canSeeShopping()) return;
   if (!confirm('Limpiar todos los items adquiridos?')) return;
-  saveList(getList().filter(function(i) { return !i.done; }));
-  renderLista();
+  C.shoppingList = (C.shoppingList || []).filter(function(it) { return !it.done; });
+  persistShopping(function() { renderLista(); });
 }
 
 function listItemHtml(item) {
@@ -1015,7 +1221,11 @@ function listItemHtml(item) {
 }
 
 function renderLista() {
-  var list    = getList();
+  if (!canSeeShopping()) {
+    showView('hoy');
+    return;
+  }
+  var list    = C.shoppingList || [];
   var pending = list.filter(function(i) { return !i.done; });
   var done    = list.filter(function(i) { return i.done; });
 
@@ -1036,12 +1246,65 @@ function renderLista() {
   dEl.innerHTML = (function() { var h = ''; for (var i = 0; i < done.length; i++) h += listItemHtml(done[i]); return h; })();
 }
 // ============================================================
+// PERSONALIZACION / PAIS
+// ============================================================
+function fillCountrySelect() {
+  var sel = document.getElementById('cfg-country');
+  if (!sel || sel.options.length) return;
+  var html = '', code;
+  for (code in COUNTRIES) {
+    if (COUNTRIES.hasOwnProperty(code)) {
+      html += '<option value="' + code + '">' + COUNTRIES[code].name + '</option>';
+    }
+  }
+  sel.innerHTML = html;
+}
+function applyUiForm() {
+  fillCountrySelect();
+  var p = C.panelUi;
+  var el;
+  el = document.getElementById('cfg-papa'); if (el) el.value = p.papaName || '';
+  el = document.getElementById('cfg-mama'); if (el) el.value = p.mamaName || '';
+  el = document.getElementById('cfg-kids'); if (el) el.value = p.kidsTemplate || '';
+  el = document.getElementById('cfg-kids-count'); if (el) el.value = '' + (p.kidsCount || 2);
+  el = document.getElementById('cfg-country'); if (el) el.value = p.country || 'AR';
+}
+function savePanelUi() {
+  if (!isFullAccess()) { openPin(); return; }
+  C.panelUi.papaName = (document.getElementById('cfg-papa').value || 'Papa').trim();
+  C.panelUi.mamaName = (document.getElementById('cfg-mama').value || 'Mama').trim();
+  C.panelUi.kidsTemplate = (document.getElementById('cfg-kids').value || 'l@s chic@s').trim();
+  C.panelUi.kidsCount = parseInt(document.getElementById('cfg-kids-count').value, 10) || 2;
+  C.panelUi.country = document.getElementById('cfg-country').value || 'AR';
+  toLocal();
+  if (USE_API) {
+    callAPI({
+      action: 'setPanelUi',
+      papaName: C.panelUi.papaName,
+      mamaName: C.panelUi.mamaName,
+      kidsTemplate: C.panelUi.kidsTemplate,
+      kidsCount: C.panelUi.kidsCount,
+      country: C.panelUi.country,
+      helperName: C.panelUi.helperName,
+      ownerHouse: C.panelUi.ownerHouse,
+      exHouse: C.panelUi.exHouse,
+      hasHelper: C.panelUi.hasHelper ? 'true' : 'false'
+    }, function() { loadAll(); showBanner('Personalizacion guardada'); });
+  } else {
+    renderAll();
+    showBanner('Personalizacion guardada');
+  }
+}
+
+// ============================================================
 // INIT
 // ============================================================
 var _n = new Date();
 calYear  = _n.getFullYear() >= 2026 ? _n.getFullYear() : 2026;
 calMonth = _n.getFullYear() === 2026 ? _n.getMonth() : 4;
 
+fillCountrySelect();
+applyUiForm();
 tick();
 setInterval(tick, 1000);
 loadAll();
