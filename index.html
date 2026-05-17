@@ -33,7 +33,8 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .clabel  { font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #7d8590; margin-bottom: 8px; }
 .cname   { font-size: 58px; font-weight: 900; line-height: 1; margin-bottom: 6px; }
 .cname-p { color: #58a6ff; } .cname-m { color: #f778a1; }
-.cnext   { font-size: 13px; color: #7d8590; }
+.cnext   { font-size: 16px; font-weight: 800; color: #e6edf3; line-height: 1.4; margin-top: 8px; }
+.cnext em { font-style: normal; color: #e3b341; font-size: 18px; letter-spacing: 0.5px; }
 
 .rowcards { display: -webkit-flex; display: flex; margin-bottom: 12px; }
 .mcard { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 12px; -webkit-flex: 1; flex: 1; margin-right: 10px; }
@@ -167,6 +168,36 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .share-toggle::after { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #7d8590; border-radius: 50%; -webkit-transition: .2s; transition: .2s; }
 .share-toggle.on::after { left: 25px; background: #0d1117; }
 #v-lista-dup { display: none !important; height: 0; overflow: hidden; }
+
+@media (max-width: 520px) {
+  .hdr { -webkit-flex-wrap: wrap; flex-wrap: wrap; padding: 8px 10px; }
+  .hdr > div:first-child { -webkit-flex: 1; flex: 1; min-width: 120px; }
+  .hdr-r { width: 100%; -webkit-justify-content: flex-end; justify-content: flex-end; margin-top: 6px; }
+  .nav {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .navbtn { padding: 8px 9px; font-size: 10px; letter-spacing: 0; -webkit-flex-shrink: 0; flex-shrink: 0; }
+  .lock-btn { margin-right: 6px; padding: 6px 8px; }
+  .clock { font-size: 26px; }
+  .cname { font-size: 48px; }
+  .cnext { font-size: 17px; }
+  .cnext em { font-size: 19px; }
+  .rowcards { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .mcard { -webkit-flex: 1 1 45%; flex: 1 1 45%; min-width: 130px; margin-bottom: 8px; }
+  .frow { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .frow select, .frow input[type="number"] { -webkit-flex: 1 1 100%; flex: 1 1 100%; margin-right: 0; margin-bottom: 8px; }
+  .frow .addbtn { width: 100%; margin-bottom: 4px; }
+  .pay-row { -webkit-flex-wrap: wrap; flex-wrap: wrap; gap: 6px; }
+  .pay-btn {
+    -webkit-flex: 1 1 calc(33.33% - 6px); flex: 1 1 calc(33.33% - 6px);
+    min-width: 0; border-radius: 8px !important; padding: 10px 2px; font-size: 11px;
+  }
+  .cuotas-row { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
+  .cuotas-row select { min-width: 0; -webkit-flex: 1; flex: 1; }
+}
 </style>
 </head>
 <body>
@@ -314,7 +345,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     </div>
     <div class="frow"><input type="text" id="e-desc" placeholder="Descripcion (opcional)" class="full-input"></div>
     <!-- Payment selector (hidden from ex) -->
-    <div id="pay-row" class="pay-row" style="display:none">
+    <div id="pay-row" class="pay-row">
       <button id="pay-ef" class="pay-btn act-ef" onclick="setPay('efectivo')">&#128181; Efectivo</button>
       <button id="pay-bv" class="pay-btn"        onclick="setPay('billetera')">&#128241; Billetera</button>
       <button id="pay-tc" class="pay-btn"        onclick="setPay('tarjeta')">&#128179; Tarjeta</button>
@@ -553,6 +584,11 @@ function kidsLabel() {
 function whoDisplay(who) {
   if (who === 'papa') return (C.panelUi.papaName || 'Papa').toUpperCase();
   if (who === 'mama') return (C.panelUi.mamaName || 'Mama').toUpperCase();
+  return '';
+}
+function whoCalendarLabel(who) {
+  if (who === 'papa') return 'PAPA';
+  if (who === 'mama') return 'MAMA';
   return '';
 }
 function custodyHoyLabel() {
@@ -803,26 +839,22 @@ function updLock() {
 // Show/hide digital sections based on access level
 function updateAccessUI() {
   var showDigital = isFullAccess();
+  var showPay = !isExView();
   document.getElementById('dig-row').style.display        = showDigital ? '' : 'none';
-  document.getElementById('pay-row').style.display        = showDigital ? '' : 'none';
+  document.getElementById('pay-row').style.display        = showPay ? '' : 'none';
   document.getElementById('h-dig-card').style.display     = showDigital ? '' : 'none';
   var cfg = document.getElementById('cfg-card');
   var lsc = document.getElementById('list-share-card');
   if (cfg) cfg.style.display = showDigital ? '' : 'none';
   if (lsc) lsc.style.display = showDigital ? '' : 'none';
-  if (isExView() || isLocked()) {
+  if (isExView()) {
     currentPayment = 'efectivo';
     document.getElementById('cuotas-row').style.display = 'none';
   }
 }
-function canSeeShopping() {
-  if (isFullAccess()) return true;
-  if (isExView() && C.shareShopping) return true;
-  return false;
-}
 function updateNavAccess() {
   var nav = document.getElementById('nav-lista');
-  if (nav) nav.style.display = canSeeShopping() ? '' : 'none';
+  if (nav) nav.style.display = '';
   var btn = document.getElementById('share-shop-btn');
   if (btn) {
     if (C.shareShopping) btn.className = 'share-toggle on';
@@ -876,7 +908,7 @@ function showView(name) {
   var bs = document.querySelectorAll('.navbtn');
   for (var j = 0; j < bs.length; j++) bs[j].className = 'navbtn' + (ns[j]===name?' act':'');
   if (name==='hoy')  renderHoy();
-  if (name==='pres') renderBudget();
+  if (name==='pres') { updateAccessUI(); renderBudget(); }
   if (name==='cal')  renderCal();
   if (name==='alt')  renderAlerts();
   if (name === 'lista') renderLista();
@@ -910,8 +942,13 @@ function renderHoy() {
     s.setDate(s.getDate()+1);
   }
   if (nc) {
-    var diff = Math.round((nc.date.getTime()-d.getTime())/86400000); var wl = whoDisplay(nc.who);
-    nx.innerHTML = diff<=1 ? 'Manana pasan con '+wl : 'Proximo cambio en '+diff+' dias — '+DAYS[nc.date.getDay()]+' con '+wl;
+    var diff = Math.round((nc.date.getTime()-d.getTime())/86400000);
+    var wl = whoCalendarLabel(nc.who);
+    if (diff <= 1) {
+      nx.innerHTML = 'Manana pasan con <em>' + wl + '</em>';
+    } else {
+      nx.innerHTML = 'Proximo cambio en ' + diff + ' dias — ' + DAYS[nc.date.getDay()] + ' con <em>' + wl + '</em>';
+    }
   } else nx.innerHTML = '';
   // Donde va Maria hoy
   var mariaHoy = getHelperLocation(k);
@@ -1016,8 +1053,8 @@ function addExp() {
   var cat    = document.getElementById('e-cat').value;
   var amt    = parseFloat(document.getElementById('e-amt').value);
   var desc   = document.getElementById('e-desc').value;
-  var pay    = isFullAccess() ? currentPayment : 'efectivo';
-  var cuotas = (pay === 'tarjeta') ? (parseInt(document.getElementById('e-cuotas').value)||1) : 1;
+  var pay    = isExView() ? 'efectivo' : currentPayment;
+  var cuotas = (pay === 'tarjeta' && !isExView()) ? (parseInt(document.getElementById('e-cuotas').value)||1) : 1;
   if (!amt || amt <= 0) { alert('Ingresa un monto valido'); return; }
   document.getElementById('e-amt').value = ''; document.getElementById('e-desc').value = '';
   if (isFullAccess()) { document.getElementById('e-cuotas').value = '1'; updateCuotaPreview(); }
@@ -1144,11 +1181,11 @@ function checkRems() {
   if (changed) toLocal();
   if (time==='20:00') {
     var tm=new Date(now); tm.setDate(tm.getDate()+1); var tdc=getCustody(today); var tmc=getCustody(dateKey(tm));
-    if (tdc&&tmc&&tdc!==tmc) fireNotif('Cambio manana','Manana '+DAYS[tm.getDay()]+' '+kidsLabel()+' pasan con '+whoDisplay(tmc));
+    if (tdc&&tmc&&tdc!==tmc) fireNotif('Cambio manana','Manana '+DAYS[tm.getDay()]+' '+kidsLabel()+' pasan con '+whoCalendarLabel(tmc));
   }
   if (time==='08:00') {
     var yd=new Date(now); yd.setDate(yd.getDate()-1); var ydc=getCustody(dateKey(yd)); var tdc2=getCustody(today);
-    if (ydc&&tdc2&&ydc!==tdc2) fireNotif('Buenos dias!','Hoy '+kidsLabel()+' estan con '+whoDisplay(tdc2));
+    if (ydc&&tdc2&&ydc!==tdc2) fireNotif('Buenos dias!','Hoy '+kidsLabel()+' estan con '+whoCalendarLabel(tdc2));
   }
 }
 
@@ -1178,7 +1215,6 @@ function toggleShareShopping() {
 }
 
 function addListItem() {
-  if (!canSeeShopping()) { openPin(); return; }
   var inp = document.getElementById('list-inp');
   var name = inp.value.trim();
   if (!name) { inp.focus(); return; }
@@ -1189,7 +1225,6 @@ function addListItem() {
 }
 
 function toggleListItem(id) {
-  if (!canSeeShopping()) return;
   for (var i = 0; i < C.shoppingList.length; i++) {
     if (C.shoppingList[i].id === id) { C.shoppingList[i].done = !C.shoppingList[i].done; break; }
   }
@@ -1197,13 +1232,11 @@ function toggleListItem(id) {
 }
 
 function delListItem(id) {
-  if (!canSeeShopping()) return;
   C.shoppingList = (C.shoppingList || []).filter(function(it) { return it.id !== id; });
   persistShopping(function() { renderLista(); });
 }
 
 function clearAcquired() {
-  if (!canSeeShopping()) return;
   if (!confirm('Limpiar todos los items adquiridos?')) return;
   C.shoppingList = (C.shoppingList || []).filter(function(it) { return !it.done; });
   persistShopping(function() { renderLista(); });
@@ -1221,10 +1254,6 @@ function listItemHtml(item) {
 }
 
 function renderLista() {
-  if (!canSeeShopping()) {
-    showView('hoy');
-    return;
-  }
   var list    = C.shoppingList || [];
   var pending = list.filter(function(i) { return !i.done; });
   var done    = list.filter(function(i) { return i.done; });
