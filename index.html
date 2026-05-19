@@ -16,9 +16,9 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .hdr-r   { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; }
 .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #30363d; margin-right: 10px; display: inline-block; }
 .sync-dot.ok { background: #3fb950; } .sync-dot.busy { background: #e3b341; } .sync-dot.err { background: #f85149; }
-.lock-btn { background: none; border: 1px solid #30363d; border-radius: 8px; color: #7d8590; font-size: 18px; padding: 6px 10px; cursor: pointer; margin-right: 10px; }
-.lock-btn.open    { border-color: #e3b341; color: #e3b341; }
-.lock-btn.open-ex { border-color: #38bdf8; color: #38bdf8; }
+.eye-btn { background: none; border: 1px solid #30363d; border-radius: 8px; color: #7d8590; font-size: 16px; padding: 6px 10px; cursor: pointer; margin-right: 10px; transition: all 0.2s; }
+.eye-btn.open    { border-color: #e3b341; color: #e3b341; }
+.eye-btn.open-ex { border-color: #38bdf8; color: #38bdf8; }
 .nav { display: -webkit-flex; display: flex; }
 .navbtn { background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 0; padding: 8px 13px; font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; }
 .navbtn:first-child { border-radius: 8px 0 0 8px; } .navbtn:last-child { border-radius: 0 8px 8px 0; }
@@ -180,7 +180,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     padding-bottom: 2px;
   }
   .navbtn { padding: 8px 9px; font-size: 10px; letter-spacing: 0; -webkit-flex-shrink: 0; flex-shrink: 0; }
-  .lock-btn { margin-right: 6px; padding: 6px 8px; }
+  .eye-btn { margin-right: 6px; padding: 6px 8px; }
   .clock { font-size: 26px; }
   .cname { font-size: 48px; }
   .cnext { font-size: 17px; }
@@ -228,6 +228,24 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
   </div>
 </div>
 
+
+<!-- MODAL CONFIRMACIÓN CALENDARIO -->
+<div id="cal-ov" class="overlay">
+  <div class="mbox">
+    <div class="mtitle" id="cal-modal-title">Confirmar cambio</div>
+    <div id="cal-modal-desc" style="font-size:13px;color:#7d8590;margin-bottom:16px;line-height:1.5"></div>
+    <div id="cal-pin-section">
+      <div style="font-size:12px;color:#7d8590;margin-bottom:8px">Ingresá tu PIN para confirmar</div>
+      <input type="password" id="cal-pin-inp" class="minput" maxlength="4" placeholder="* * * *" style="letter-spacing:8px">
+      <div id="cal-pin-err" class="merror"></div>
+    </div>
+    <div class="mbtns">
+      <button class="mbtn-c" onclick="closeCalModal()">Cancelar</button>
+      <button class="mbtn-ok" id="cal-confirm-btn" onclick="confirmCalChange()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <div class="hdr">
   <div>
@@ -236,7 +254,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
   </div>
   <div class="hdr-r">
     <span id="sync-dot" class="sync-dot"></span>
-    <button id="lock-btn" class="lock-btn" onclick="handleLock()">&#128274;</button>
+    <button id="eye-btn" class="eye-btn" onclick="handleEye()" title="Ver/ocultar datos">&#128065;</button>
     <div class="nav">
       <button class="navbtn act" onclick="showView('hoy')">Hoy</button>
       <button class="navbtn"     onclick="showView('pres')">$ Mes</button>
@@ -258,8 +276,8 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
   <div class="rowcards">
     <div class="mcard">
       <div class="mclabel">Efectivo disponible</div>
-      <div class="mcvalue" id="h-rem" style="cursor:pointer;color:#7d8590" onclick="handleLock()">&#9679;&#9679;&#9679;&#9679;&#9679;</div>
-      <div class="mcsub">toca para ver</div>
+      <div class="mcvalue" id="h-rem" style="cursor:pointer;color:#7d8590" onclick="handleEye()">&#9679;&#9679;&#9679;&#9679;&#9679;</div>
+      <div class="mcsub">tocá el 👁 para ver</div>
     </div>
     <div class="mcard" id="h-dig-card">
       <div class="mclabel">Digital del mes</div>
@@ -504,7 +522,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 // ============================================================
 // ** PEGAR TU URL DEL APPS SCRIPT AQUI **
 // ============================================================
-var API_URL = 'https://script.google.com/macros/s/AKfycbwL8g65nk13jb34zEdQz4jjZpnrGVM1ExPI29ZFBwXsFlLh0IoCLc_aT0tv-AV4Z1za/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycbx9M1lPTUccRc2TQ5U4eu3sGOcXsSb2j9XaUpE-Geq3diHnxPGHlKztdzfuH7Pn39Ri/exec';
 var USE_API = API_URL.indexOf('PEGAR') === -1;
 var CLIENT_ID = 'juanma';
 
@@ -805,19 +823,110 @@ function getHelperLocation(ds) {
   if (who === 'mama') return C.panelUi.exHouse || '';
   return '';
 }
+// Día pendiente de confirmar
+var _pendingDay = null;
+var _pendingWho = null;
+
 function toggleDay(ds) {
   var nw = getCustody(ds) === 'papa' ? 'mama' : 'papa';
-  C.overrides[ds] = nw;
-  toLocal(); renderCal();
-  if (ds === dateKey(new Date())) renderHoy();
-  if (USE_API) {
-    callAPI({ clientId: CLIENT_ID, action: 'setOverride', date: ds, who: nw }, function(err) {
-      if (err) showBanner('Cambio guardado localmente. Verifica tu conexion.');
-    });
+  _pendingDay = ds;
+  _pendingWho = nw;
+  // Armar descripción del cambio
+  var parts = ds.split('-');
+  var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  var dayName = DAYS[d.getDay()];
+  var quien = nw === 'papa' ? 'PAPÁ' : 'MAMÁ';
+  document.getElementById('cal-modal-title').innerHTML = 'Confirmar cambio';
+  document.getElementById('cal-modal-desc').innerHTML =
+    dayName + ' ' + parts[2] + '/' + parts[1] + ' → <strong style="color:' +
+    (nw==='papa'?'#58a6ff':'#f778a1') + '">' + quien + '</strong>';
+  // Si ya hay sesión activa, no pedir PIN
+  var pinSection = document.getElementById('cal-pin-section');
+  var confirmBtn = document.getElementById('cal-confirm-btn');
+  if (!isLocked() || !USE_API) {
+    pinSection.style.display = 'none';
+    confirmBtn.innerHTML = 'Confirmar';
+  } else {
+    pinSection.style.display = '';
+    confirmBtn.innerHTML = 'Confirmar';
+    document.getElementById('cal-pin-inp').value = '';
+    document.getElementById('cal-pin-err').innerHTML = '';
   }
+  document.getElementById('cal-ov').className = 'overlay show';
+  setTimeout(function() {
+    if (!isLocked() || !USE_API) return;
+    var i = document.getElementById('cal-pin-inp');
+    if (i) i.focus();
+  }, 100);
+}
+
+function closeCalModal() {
+  document.getElementById('cal-ov').className = 'overlay';
+  _pendingDay = null; _pendingWho = null;
+}
+
+function confirmCalChange() {
+  if (!_pendingDay) return;
+  var ds = _pendingDay; var nw = _pendingWho;
+
+  function doChange() {
+    C.overrides[ds] = nw;
+    toLocal(); renderCal();
+    if (ds === dateKey(new Date())) renderHoy();
+    closeCalModal();
+    if (USE_API) {
+      callAPI({ clientId: CLIENT_ID, action: 'setOverride', date: ds, who: nw }, function(err) {
+        if (err) showBanner('Cambio guardado localmente. Verifica tu conexion.');
+      });
+    }
+  }
+
+  // Sin sesión activa: validar PIN primero
+  if (isLocked() && USE_API) {
+    var v = document.getElementById('cal-pin-inp').value;
+    if (!/^\d{4}$/.test(v)) {
+      document.getElementById('cal-pin-err').innerHTML = 'PIN de 4 dígitos';
+      return;
+    }
+    callAPI({ clientId: CLIENT_ID, action: 'validatePin', pin: v }, function(err, data) {
+      if (!err && data && data.mode) {
+        if (data.token) setToken(data.token);
+        applyViewMode(data.mode);
+        doChange();
+      } else {
+        var local = pinOkLocal(v);
+        if (local) { applyViewMode(local); doChange(); }
+        else {
+          document.getElementById('cal-pin-err').innerHTML = 'PIN incorrecto';
+          document.getElementById('cal-pin-inp').value = '';
+        }
+      }
+    });
+    return;
+  }
+  doChange();
 }
 function resetCal() {
-  if (!confirm('Restaurar calendario al esquema original?')) return;
+  if (!confirm('¿Restaurar el calendario al esquema original? Esto borra todos los cambios manuales.')) return;
+  if (isLocked() && USE_API) {
+    var v = prompt('Ingresá tu PIN para confirmar:');
+    if (!v) return;
+    callAPI({ clientId: CLIENT_ID, action: 'validatePin', pin: v }, function(err, data) {
+      if (!err && data && data.mode) {
+        if (data.token) setToken(data.token);
+        applyViewMode(data.mode);
+        doResetCal();
+      } else {
+        var local = pinOkLocal(v);
+        if (local) { applyViewMode(local); doResetCal(); }
+        else showBanner('PIN incorrecto');
+      }
+    });
+    return;
+  }
+  doResetCal();
+}
+function doResetCal() {
   C.overrides = {};
   if (USE_API) callAPI({ clientId: CLIENT_ID, action: 'resetOverrides' }, function() { loadAll(); });
   else { toLocal(); renderCal(); renderHoy(); }
@@ -826,15 +935,21 @@ function resetCal() {
 // ============================================================
 // PRIVACY / ACCESS
 // ============================================================
-function handleLock() {
+function handleEye() {
   if (!isLocked()) {
+    // Ocultar: cerrar sesión y volver a estado sin montos visibles
     if (USE_API && getToken()) callAPI({ clientId: CLIENT_ID, action: 'logout', token: getToken() }, null);
     clearToken();
     viewMode = 'locked';
     if (privTimer) clearTimeout(privTimer);
     updLock(); renderAll(); updateAccessUI();
-  } else { openPin(); }
+  } else {
+    // Mostrar: pedir PIN
+    openPin();
+  }
 }
+// Alias por si queda alguna referencia
+function handleLock() { handleEye(); }
 
 function openPin()  { document.getElementById('pin-inp').value = ''; document.getElementById('pin-err').innerHTML = ''; document.getElementById('pin-ov').className = 'overlay show'; }
 function closePin() { document.getElementById('pin-ov').className = 'overlay'; }
@@ -885,10 +1000,22 @@ function submitPin() {
 }
 
 function updLock() {
-  var b = document.getElementById('lock-btn');
-  if (isLocked())      { b.innerHTML = '&#128274;'; b.className = 'lock-btn'; }
-  else if (isFullAccess()) { b.innerHTML = '&#128275;'; b.className = 'lock-btn open'; }
-  else                 { b.innerHTML = '&#128275;'; b.className = 'lock-btn open-ex'; }
+  var b = document.getElementById('eye-btn');
+  if (!b) return;
+  // 👁 cerrado = datos ocultos | 👁 abierto amarillo = acceso full | 👁 abierto azul = ex
+  if (isLocked()) {
+    b.innerHTML = '&#128065;&#65039;'; // ojo normal
+    b.className = 'eye-btn';
+    b.title = 'Tocar para ver los datos';
+  } else if (isFullAccess()) {
+    b.innerHTML = '&#128065;&#65039;'; // ojo abierto
+    b.className = 'eye-btn open';
+    b.title = 'Datos visibles — tocar para ocultar';
+  } else {
+    b.innerHTML = '&#128065;&#65039;';
+    b.className = 'eye-btn open-ex';
+    b.title = 'Vista compartida — tocar para ocultar';
+  }
 }
 
 // Show/hide digital sections based on access level
@@ -1245,6 +1372,7 @@ function checkRems() {
 }
 
 document.getElementById('pin-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) submitPin(); };
+document.getElementById('cal-pin-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) confirmCalChange(); };
 document.getElementById('bud-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) saveBud(); };
 document.getElementById('list-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) addListItem(); };
 
