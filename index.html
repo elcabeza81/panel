@@ -9,7 +9,7 @@
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; min-height: 100vh; overflow-x: hidden; }
- 
+
 .hdr { background: #161b22; border-bottom: 1px solid #30363d; padding: 8px 14px; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: space-between; justify-content: space-between; }
 .clock   { font-size: 30px; font-weight: 900; color: #e3b341; line-height: 1; }
 .datestr { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 1px; margin-top: 1px; }
@@ -23,9 +23,9 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .navbtn { background: #21262d; color: #7d8590; border: 1px solid #30363d; border-radius: 0; padding: 8px 13px; font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; }
 .navbtn:first-child { border-radius: 8px 0 0 8px; } .navbtn:last-child { border-radius: 0 8px 8px 0; }
 .navbtn.act { background: #e3b341; color: #0d1117; border-color: #e3b341; }
- 
+
 .view { display: none; padding: 12px; } .view.act { display: block; }
- 
+
 .ccard { border-radius: 16px; padding: 24px 16px; margin-bottom: 12px; text-align: center; }
 .ccard-n { background: #161b22; border: 2px solid #30363d; }
 .ccard-p { background: #0d2647; border: 2px solid #58a6ff; }
@@ -36,14 +36,14 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .cname-p { color: #58a6ff; } .cname-m { color: #f778a1; }
 .cnext   { font-size: 16px; font-weight: 800; color: #e6edf3; line-height: 1.4; margin-top: 8px; }
 .cnext em { font-style: normal; color: #e3b341; font-size: 18px; letter-spacing: 0.5px; }
- 
+
 .rowcards { display: -webkit-flex; display: flex; margin-bottom: 12px; }
 .mcard { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 12px; -webkit-flex: 1; flex: 1; margin-right: 10px; }
 .mcard:last-child { margin-right: 0; }
 .mclabel { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #7d8590; margin-bottom: 4px; }
 .mcvalue { font-size: 20px; font-weight: 900; }
 .mcsub   { font-size: 10px; color: #7d8590; margin-top: 2px; }
- 
+
 .card   { background: #161b22; border: 1px solid #30363d; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
 .stitle { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #7d8590; margin-bottom: 10px; font-weight: 800; }
 .blabel { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #7d8590; margin-bottom: 4px; }
@@ -56,31 +56,31 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .pctlabel { font-size: 11px; color: #7d8590; }
 .setrow { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: space-between; justify-content: space-between; margin-bottom: 12px; }
 .setbtn { background: none; border: 1px solid #30363d; border-radius: 6px; color: #7d8590; font-size: 12px; padding: 6px 12px; cursor: pointer; font-family: 'Nunito', sans-serif; }
- 
+
 .dig-row  { display: -webkit-flex; display: flex; margin-bottom: 12px; }
 .dig-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 12px; -webkit-flex: 1; flex: 1; margin-right: 10px; }
 .dig-card:last-child { margin-right: 0; }
 .dig-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #7d8590; margin-bottom: 4px; }
 .dig-value { font-size: 18px; font-weight: 900; }
 .dig-sub   { font-size: 10px; color: #7d8590; margin-top: 2px; }
- 
+
 .frow { display: -webkit-flex; display: flex; margin-bottom: 10px; }
 .frow select { -webkit-flex: 1; flex: 1; background: #21262d; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; font-family: 'Nunito', sans-serif; font-size: 14px; padding: 10px; -webkit-appearance: none; margin-right: 8px; }
 .frow input[type="number"] { -webkit-flex: 1.5; flex: 1.5; background: #21262d; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 700; padding: 10px; -webkit-appearance: none; margin-right: 8px; }
 .full-input { width: 100%; background: #21262d; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; font-family: 'Nunito', sans-serif; font-size: 14px; padding: 10px; -webkit-appearance: none; }
 .addbtn { background: #e3b341; color: #0d1117; border: none; border-radius: 8px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 900; padding: 10px 16px; cursor: pointer; white-space: nowrap; }
- 
+
 .pay-row { display: -webkit-flex; display: flex; margin-bottom: 10px; }
 .pay-btn { -webkit-flex: 1; flex: 1; background: #21262d; border: 1px solid #30363d; color: #7d8590; font-family: 'Nunito', sans-serif; font-size: 12px; font-weight: 800; padding: 9px 4px; cursor: pointer; text-align: center; border-radius: 0; }
 .pay-btn:first-child { border-radius: 8px 0 0 8px; } .pay-btn:last-child { border-radius: 0 8px 8px 0; }
 .act-ef { background: rgba(63,185,80,0.15);  color: #3fb950; border-color: #3fb950; }
 .act-bv { background: rgba(56,189,248,0.15); color: #38bdf8; border-color: #38bdf8; }
 .act-tc { background: rgba(139,92,246,0.15); color: #8b5cf6; border-color: #8b5cf6; }
- 
+
 .cuotas-row { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; margin-bottom: 10px; padding: 10px; background: #21262d; border-radius: 8px; border: 1px solid #8b5cf6; }
 .cuotas-row select { background: transparent; border: none; color: #8b5cf6; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; padding: 0; -webkit-appearance: none; margin-right: 12px; min-width: 120px; }
 .cuota-preview { font-size: 13px; font-weight: 900; color: #8b5cf6; }
- 
+
 .eitem { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 9px 0; border-bottom: 1px solid #30363d; }
 .eitem:last-child { border-bottom: none; }
 .ecat  { border-radius: 5px; padding: 3px 7px; font-size: 10px; font-weight: 800; text-transform: uppercase; margin-right: 6px; white-space: nowrap; }
@@ -94,14 +94,14 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .eamt   { font-size: 14px; font-weight: 900; color: #f85149; margin-right: 6px; white-space: nowrap; }
 .edel   { background: none; border: none; color: #7d8590; font-size: 14px; cursor: pointer; padding: 4px; }
 .catrow { display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between; margin-bottom: 4px; }
- 
+
 .bc-comida     { background: rgba(227,179,65,0.15);  color: #e3b341; }
 .bc-servicios  { background: rgba(56,189,248,0.15);  color: #38bdf8; }
 .bc-nenas      { background: rgba(247,120,161,0.15); color: #f778a1; }
 .bc-transporte { background: rgba(63,185,80,0.15);   color: #3fb950; }
 .bc-salud      { background: rgba(249,115,22,0.15);  color: #f97316; }
 .bc-otros      { background: rgba(139,92,246,0.15);  color: #8b5cf6; }
- 
+
 .calhead  { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; -webkit-justify-content: space-between; justify-content: space-between; margin-bottom: 10px; }
 .caltitle { font-size: 20px; font-weight: 900; text-transform: capitalize; }
 .calnav   { background: #161b22; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; font-size: 18px; padding: 8px 16px; cursor: pointer; font-family: 'Nunito', sans-serif; }
@@ -129,7 +129,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .ld-mama  { background: rgba(247,120,161,0.2); border-color: #f778a1; }
 .ld-today { background: transparent; border-color: #e3b341; }
 .ld-helper { background: rgba(255,51,51,0.2); border-color: #ff3333; }
- 
+
 .ritem { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 10px 0; border-bottom: 1px solid #30363d; }
 .ritem:last-child { border-bottom: none; }
 .rtime { font-size: 20px; font-weight: 900; color: #e3b341; margin-right: 12px; white-space: nowrap; min-width: 58px; }
@@ -138,9 +138,9 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .notif-box { background: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 14px; margin-bottom: 12px; text-align: center; }
 .notif-btn { background: #3fb950; color: #0d1117; border: none; border-radius: 8px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 900; padding: 10px 20px; cursor: pointer; margin-top: 8px; }
 .auto-r { padding: 8px 0; border-bottom: 1px solid #30363d; } .auto-r:last-child { border-bottom: none; }
- 
+
 .banner { position: fixed; top: 68px; left: 50%; z-index: 9999; -webkit-transform: translateX(-50%); transform: translateX(-50%); background: #e3b341; color: #0d1117; padding: 12px 22px; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; -webkit-box-shadow: 0 4px 20px rgba(0,0,0,0.5); box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-width: 85%; text-align: center; }
- 
+
 .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 10000; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; }
 .overlay.show { display: -webkit-flex; display: flex; }
 .mbox   { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 26px 22px; width: 300px; text-align: center; }
@@ -168,7 +168,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .share-toggle.on { background: #3fb950; }
 .share-toggle::after { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #7d8590; border-radius: 50%; -webkit-transition: .2s; transition: .2s; }
 .share-toggle.on::after { left: 25px; background: #0d1117; }
- 
+
 @media (max-width: 520px) {
   .hdr { -webkit-flex-wrap: wrap; flex-wrap: wrap; padding: 8px 10px; }
   .hdr > div:first-child { -webkit-flex: 1; flex: 1; min-width: 120px; }
@@ -201,7 +201,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 </style>
 </head>
 <body>
- 
+
 <!-- PIN MODAL -->
 <div id="pin-ov" class="overlay">
   <div class="mbox">
@@ -214,7 +214,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     </div>
   </div>
 </div>
- 
+
 <!-- BUDGET MODAL -->
 <div id="bud-ov" class="overlay">
   <div class="mbox">
@@ -227,7 +227,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     </div>
   </div>
 </div>
- 
+
 <!-- HEADER -->
 <div class="hdr">
   <div>
@@ -246,7 +246,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     </div>
   </div>
 </div>
- 
+
 <!-- HOY -->
 <div id="v-hoy" class="view act">
   <div id="cc" class="ccard ccard-n">
@@ -277,7 +277,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <div id="h-list"></div>
   </div>
 </div>
- 
+
 <!-- PRESUPUESTO -->
 <div id="v-pres" class="view">
   <!-- Cash budget card -->
@@ -302,7 +302,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <span class="pctlabel">Total: <span id="b-total">&#9679;&#9679;&#9679;&#9679;&#9679;</span></span>
     </div>
   </div>
- 
+
   <!-- Digital summary (hidden from ex) -->
   <div id="dig-row" class="dig-row" style="display:none">
     <div class="dig-card">
@@ -321,13 +321,13 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <div class="dig-sub">todos los medios</div>
     </div>
   </div>
- 
+
   <!-- Category breakdown -->
   <div class="card">
     <div class="stitle">Por categoria</div>
     <div id="b-cats"><div class="empty-state">Sin gastos aun</div></div>
   </div>
- 
+
   <!-- Add expense form -->
   <div class="card">
     <div class="stitle">Registrar gasto</div>
@@ -365,7 +365,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <span id="cuota-preview" class="cuota-preview"></span>
     </div>
   </div>
- 
+
   <!-- Expense list -->
   <div class="card">
     <div class="setrow">
@@ -375,7 +375,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <div id="b-list"><div class="empty-state">Sin gastos este mes</div></div>
   </div>
 </div>
- 
+
 <!-- CALENDARIO -->
 <div id="v-cal" class="view">
   <div class="calhead">
@@ -401,7 +401,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <button class="setbtn" onclick="resetCal()">Restaurar calendario original</button>
   </div>
 </div>
- 
+
 <!-- LISTA COMPRAS -->
 <div id="v-lista" class="view">
   <div class="card" id="list-share-card" style="display:none">
@@ -434,7 +434,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <div id="list-done"></div>
   </div>
 </div>
- 
+
 <!-- ALERTAS -->
 <div id="v-alt" class="view">
   <div id="notif-box" class="notif-box">
@@ -499,7 +499,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     </div>
   </div>
 </div>
- 
+
 <script>
 // ============================================================
 // ** PEGAR TU URL DEL APPS SCRIPT AQUI **
@@ -507,7 +507,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 var API_URL = 'https://script.google.com/macros/s/AKfycbx9M1lPTUccRc2TQ5U4eu3sGOcXsSb2j9XaUpE-Geq3diHnxPGHlKztdzfuH7Pn39Ri/exec';
 var USE_API = API_URL.indexOf('PEGAR') === -1;
 var CLIENT_ID = 'juanma';
- 
+
 // PIN: validacion en servidor (Apps Script initPins). Fallback = hash local sin texto plano en el HTML.
 function authHash(pin, role) {
   var s = pin + '|' + role + '|pj2026', h = 0, i;
@@ -517,12 +517,12 @@ function authHash(pin, role) {
 function _d(a) { var s = '', i; for (i = 0; i < a.length; i++) s += String.fromCharCode(a[i] ^ 42); return s; }
 var PIN_HASH_OWNER = authHash(_d([29, 29, 30, 28]), 'owner');
 var PIN_HASH_EX    = authHash(_d([27, 26, 31, 28]), 'ex');
- 
+
 // viewMode: 'locked' | 'full' | 'ex'
 var viewMode   = 'locked';
 var privTimer  = null;
 var currentPayment = 'efectivo';
- 
+
 var C = {
   expenses: [], budget: 3000000, overrides: {}, reminders: [],
   shoppingList: [], shareShopping: true,
@@ -533,7 +533,7 @@ var C = {
     ownerHouse: 'Prados', exHouse: 'Aires', hasHelper: true
   }
 };
- 
+
 var COUNTRIES = {
   AR: { name: 'Argentina', symbol: '$', sep: '.', decimals: 0 },
   CL: { name: 'Chile', symbol: '$', sep: '.', decimals: 0 },
@@ -544,14 +544,14 @@ var COUNTRIES = {
   UY: { name: 'Uruguay', symbol: '$', sep: '.', decimals: 0 },
   PE: { name: 'Peru', symbol: 'S/', sep: ',', decimals: 0 }
 };
- 
+
 var CYCLE_START = new Date(2026, 4, 8).getTime();
 var CYCLE = ['mama','mama','mama','papa','papa','mama','mama','papa','papa','papa','mama','mama','papa','papa'];
 var MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 var DAYS   = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
 var CAT_COLORS = { comida:'#e3b341', servicios:'#38bdf8', nenas:'#f778a1', transporte:'#3fb950', salud:'#f97316', otros:'#8b5cf6' };
 var calYear = 2026; var calMonth = 4;
- 
+
 function getCatLabels() {
   var k = kidsLabel();
   return { comida:'Comida', servicios:'Servicios', nenas:k, transporte:'Transporte', salud:'Salud', otros:'Otros' };
@@ -584,14 +584,14 @@ function getCountry() {
   var code = (C.panelUi && C.panelUi.country) ? C.panelUi.country : 'AR';
   return COUNTRIES[code] || COUNTRIES.AR;
 }
- 
+
 // ============================================================
 // ACCESS HELPERS
 // ============================================================
 function isLocked()  { return viewMode === 'locked'; }
 function isFullAccess() { return viewMode === 'full'; }
 function isExView()  { return viewMode === 'ex'; }
- 
+
 // Amount formatting based on access level
 function fmtAmt(n) {
   if (isLocked()) return '&#9679;&#9679;&#9679;&#9679;&#9679;';
@@ -602,7 +602,7 @@ function fmtDigAmt(n) {
   if (isLocked() || isExView()) return '&#9679;&#9679;&#9679;&#9679;&#9679;';
   return fmtMoney(n);
 }
- 
+
 // ============================================================
 // PAYMENT METHOD
 // ============================================================
@@ -614,7 +614,7 @@ function setPay(method) {
   document.getElementById('cuotas-row').style.display = method === 'tarjeta' ? '' : 'none';
   updateCuotaPreview();
 }
- 
+
 function updateCuotaPreview() {
   var amt    = parseFloat(document.getElementById('e-amt').value) || 0;
   var cuotas = parseInt(document.getElementById('e-cuotas').value) || 1;
@@ -626,7 +626,7 @@ function updateCuotaPreview() {
     el.innerHTML = 'Pago en 1 vez';
   } else { el.innerHTML = ''; }
 }
- 
+
 // ============================================================
 // API — JSONP
 // ============================================================
@@ -648,7 +648,7 @@ function callAPI(params, cb) {
   document.head.appendChild(s);
 }
 function setSyncDot(st) { document.getElementById('sync-dot').className = 'sync-dot ' + (st||''); }
- 
+
 function parseShoppingList(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
@@ -666,7 +666,7 @@ function saveShoppingToServer(list, cb) {
     if (cb) cb(err, data);
   });
 }
- 
+
 function mergeShoppingFromServer(serverList) {
   var server = parseShoppingList(serverList);
   var local = getLocalShopping();
@@ -679,14 +679,14 @@ function mergeShoppingFromServer(serverList) {
   }
   C.shoppingList = server;
 }
- 
+
 // ============================================================
 // DATA
 // ============================================================
 function loadAll() {
   if (!USE_API) { fromLocal(); renderAll(); updateNavAccess(); return; }
   var now = new Date(); var month = now.getFullYear() + '-' + pad2(now.getMonth()+1);
-  callAPI({ clientId: CLIENT_ID, action:'getAll', month:month }, function(err, data) {
+  callAPI({ clientId: CLIENT_ID, action: 'getAll', month: month }, function(err, data) {
     if (!err && data && data.expenses !== undefined) {
       C.expenses  = data.expenses  || [];
       C.budget    = data.budget    || 3000000;
@@ -712,7 +712,7 @@ function mergeUi(raw) {
   for (var k in raw) { if (raw.hasOwnProperty(k) && raw[k] !== undefined && raw[k] !== '') base[k] = raw[k]; }
   return base;
 }
- 
+
 function fromLocal() {
   var b = localStorage.getItem('budget');   if (b) C.budget = parseFloat(b);
   var e = localStorage.getItem(storKey());  if (e) { try { C.expenses  = JSON.parse(e); } catch(x) {} }
@@ -738,7 +738,7 @@ function renderAll() {
   renderBudget();
   if (document.getElementById('v-lista').className.indexOf('act') >= 0) renderLista();
 }
- 
+
 // ============================================================
 // EXPENSE TOTALS
 // ============================================================
@@ -752,12 +752,12 @@ function totalTarjeta() {
   var t = 0; for (var i = 0; i < C.expenses.length; i++) { if (C.expenses[i].payment === 'tarjeta') t += C.expenses[i].amt; } return t;
 }
 function totalAll() { var t = 0; for (var i = 0; i < C.expenses.length; i++) t += C.expenses[i].amt; return t; }
- 
+
 function getVisibleExpenses() {
   if (isExView()) return C.expenses.filter(function(e) { return !e.payment || e.payment === 'efectivo'; });
   return C.expenses;
 }
- 
+
 // ============================================================
 // CUSTODY & HELPER
 // ============================================================
@@ -784,17 +784,21 @@ function getHelperLocation(ds) {
 function toggleDay(ds) {
   var nw = getCustody(ds) === 'papa' ? 'mama' : 'papa';
   C.overrides[ds] = nw;
-  if (USE_API) callAPI({ clientId: CLIENT_ID, action:'setOverride', date:ds, who:nw }, null);
   toLocal(); renderCal();
   if (ds === dateKey(new Date())) renderHoy();
+  if (USE_API) {
+    callAPI({ clientId: CLIENT_ID, action: 'setOverride', date: ds, who: nw }, function(err) {
+      if (err) showBanner('Cambio guardado localmente. Verifica tu conexion.');
+    });
+  }
 }
 function resetCal() {
   if (!confirm('Restaurar calendario al esquema original?')) return;
   C.overrides = {};
-  if (USE_API) callAPI({ clientId: CLIENT_ID, action:'resetOverrides' }, function() { loadAll(); });
+  if (USE_API) callAPI({ clientId: CLIENT_ID, action: 'resetOverrides' }, function() { loadAll(); });
   else { toLocal(); renderCal(); renderHoy(); }
 }
- 
+
 // ============================================================
 // PRIVACY / ACCESS
 // ============================================================
@@ -805,10 +809,10 @@ function handleLock() {
     updLock(); renderAll(); updateAccessUI();
   } else { openPin(); }
 }
- 
+
 function openPin()  { document.getElementById('pin-inp').value = ''; document.getElementById('pin-err').innerHTML = ''; document.getElementById('pin-ov').className = 'overlay show'; }
 function closePin() { document.getElementById('pin-ov').className = 'overlay'; }
- 
+
 function applyViewMode(mode) {
   viewMode = mode;
   closePin(); updLock(); renderAll(); updateAccessUI(); updateNavAccess();
@@ -847,14 +851,14 @@ function submitPin() {
     document.getElementById('pin-inp').value = '';
   }
 }
- 
+
 function updLock() {
   var b = document.getElementById('lock-btn');
   if (isLocked())      { b.innerHTML = '&#128274;'; b.className = 'lock-btn'; }
   else if (isFullAccess()) { b.innerHTML = '&#128275;'; b.className = 'lock-btn open'; }
   else                 { b.innerHTML = '&#128275;'; b.className = 'lock-btn open-ex'; }
 }
- 
+
 // Show/hide digital sections based on access level
 function updateAccessUI() {
   var showDigital = isFullAccess();
@@ -880,7 +884,7 @@ function updateNavAccess() {
     else btn.className = 'share-toggle';
   }
 }
- 
+
 // ============================================================
 // UTILS
 // ============================================================
@@ -906,7 +910,7 @@ function refreshCatLabels() {
 }
 function storKey()  { var d = new Date(); return 'exp_' + d.getFullYear() + '_' + pad2(d.getMonth()+1); }
 function daysLeft() { var d = new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate() - d.getDate(); }
- 
+
 // ============================================================
 // BUDGET MODAL
 // ============================================================
@@ -917,7 +921,7 @@ function saveBud() {
   if (v > 0) { C.budget = v; if (USE_API) callAPI({ clientId: CLIENT_ID, action:'setBudget', amount:v }, null); toLocal(); }
   closeBud(); renderBudget(); renderHoy();
 }
- 
+
 // ============================================================
 // VIEWS
 // ============================================================
@@ -932,7 +936,7 @@ function showView(name) {
   if (name==='alt')  renderAlerts();
   if (name === 'lista') renderLista();
 }
- 
+
 // ============================================================
 // CLOCK
 // ============================================================
@@ -941,7 +945,7 @@ function tick() {
   document.getElementById('clock').innerHTML   = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   document.getElementById('datestr').innerHTML = DAYS[d.getDay()] + '  ' + d.getDate() + ' de ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear();
 }
- 
+
 // ============================================================
 // HOY
 // ============================================================
@@ -953,7 +957,7 @@ function renderHoy() {
   if (who==='papa')      { cc.className='ccard ccard-p'; nm.className='cname cname-p'; nm.innerHTML='PAPA'; }
   else if (who==='mama') { cc.className='ccard ccard-m'; nm.className='cname cname-m'; nm.innerHTML='MAMA'; }
   else                   { cc.className='ccard ccard-n'; nm.className='cname'; nm.innerHTML='Sin datos'; }
- 
+
   var s = new Date(d); s.setDate(s.getDate()+1); var nc = null;
   for (var i = 0; i < 90; i++) {
     var sk = dateKey(s); var sc = getCustody(sk);
@@ -980,7 +984,7 @@ function renderHoy() {
       mariaEl.style.display = 'none';
     }
   }
- 
+
   var budget = C.budget; var cash = totalCash(); var rem = budget - cash;
   var re = document.getElementById('h-rem'); var de = document.getElementById('h-dig');
   if (isLocked()) {
@@ -993,13 +997,13 @@ function renderHoy() {
     }
   }
   document.getElementById('h-dias').innerHTML = daysLeft();
- 
+
   var exps = getVisibleExpenses();
   var le = document.getElementById('h-list');
   if (!exps.length) { le.innerHTML='<div class="empty-state">Sin gastos registrados aun</div>'; }
   else { var last=exps.slice(-5).reverse(); var html=''; for(var j=0;j<last.length;j++) html+=expHtml(last[j],false); le.innerHTML=html; }
 }
- 
+
 // ============================================================
 // PRESUPUESTO
 // ============================================================
@@ -1007,7 +1011,7 @@ function renderBudget() {
   var CAT_LABELS = getCatLabels();
   var d = new Date(); var budget = C.budget; var cash = totalCash(); var rem = budget - cash;
   var pct = Math.min(100, Math.round(cash/budget*100)); var avail = 100-pct;
- 
+
   document.getElementById('bmonth').innerHTML  = MONTHS[d.getMonth()] + ' ' + d.getFullYear();
   document.getElementById('b-rem').innerHTML   = fmtAmt(Math.max(0,rem));
   document.getElementById('b-rem').style.color = isLocked()?'#7d8590':(rem<budget*0.2?'#f85149':rem<budget*0.4?'#e3b341':'#3fb950');
@@ -1015,18 +1019,18 @@ function renderBudget() {
   document.getElementById('b-spent').style.color = isLocked()?'#7d8590':'#f85149';
   document.getElementById('b-total').innerHTML = fmtAmt(budget);
   document.getElementById('b-pct').innerHTML   = isLocked()?'bloqueado':(pct+'% del efectivo');
- 
+
   var bar = document.getElementById('b-bar');
   if (isLocked()) { bar.style.width='0%'; bar.className='barfill bargreen'; }
   else { bar.style.width=avail+'%'; bar.className='barfill '+(avail<20?'barred':avail<40?'baryellow':'bargreen'); }
- 
+
   // Digital section
   if (isFullAccess()) {
     document.getElementById('b-bv').innerHTML  = fmtMoney(totalBilletera());
     document.getElementById('b-tc').innerHTML  = fmtMoney(totalTarjeta());
     document.getElementById('b-all').innerHTML = fmtMoney(totalAll());
   }
- 
+
   // Category breakdown (cash only for ex, all for full)
   var sourceExps = getVisibleExpenses();
   var cats = {}; for (var i = 0; i < sourceExps.length; i++) { var c = sourceExps[i].cat; cats[c]=(cats[c]||0)+sourceExps[i].amt; }
@@ -1040,14 +1044,14 @@ function renderBudget() {
     }
   }
   document.getElementById('b-cats').innerHTML = hc?ch:'<div class="empty-state">Sin gastos aun</div>';
- 
+
   // Expense list
   var exps = getVisibleExpenses();
   var le = document.getElementById('b-list');
   if (!exps.length) { le.innerHTML='<div class="empty-state">Sin gastos este mes</div>'; }
   else { var html=''; var rev=exps.slice().reverse(); for(var j=0;j<rev.length;j++) html+=expHtml(rev[j],true); le.innerHTML=html; }
 }
- 
+
 function expHtml(e, showDel) {
   var CAT_LABELS = getCatLabels();
   var pay    = e.payment || 'efectivo';
@@ -1067,7 +1071,7 @@ function expHtml(e, showDel) {
     '<span class="edate">'+(e.date?e.date.substring(5):'')+'</span>' +
     '<span class="eamt">-'+fmtAmt(e.amt)+'</span>' + del + '</div>';
 }
- 
+
 function addExp() {
   var cat    = document.getElementById('e-cat').value;
   var amt    = parseFloat(document.getElementById('e-amt').value);
@@ -1091,13 +1095,13 @@ function addExp() {
   var payLabel = pay==='efectivo'?'efectivo':pay==='billetera'?'billetera':'tarjeta'+(cuotas>1?' '+cuotas+'c':'');
   showBanner('Gasto registrado: '+getCatLabels()[cat]+' '+fmtMoney(amt)+' ('+payLabel+')');
 }
- 
+
 function delExp(id) {
   if (USE_API) callAPI({ clientId: CLIENT_ID, action:'delExp', id:id }, null);
   C.expenses = C.expenses.filter(function(e) { return e.id !== id; });
   toLocal(); renderBudget(); renderHoy();
 }
- 
+
 function clearMonth() {
   if (!confirm('Borrar todos los gastos de este mes?')) return;
   var mkey = new Date().getFullYear() + '-' + pad2(new Date().getMonth()+1);
@@ -1105,7 +1109,7 @@ function clearMonth() {
   if (USE_API) callAPI({ clientId: CLIENT_ID, action:'clearMonth', month:mkey }, null);
   toLocal(); renderBudget(); renderHoy();
 }
- 
+
 // ============================================================
 // CALENDARIO
 // ============================================================
@@ -1138,10 +1142,10 @@ function renderCal() {
   }
   document.getElementById('calbody').innerHTML = html;
 }
- 
+
 function calPrev() { if(calMonth===0){calMonth=11;calYear--;}else calMonth--; renderCal(); }
 function calNext() { if(calMonth===11){calMonth=0;calYear++;}else calMonth++; renderCal(); }
- 
+
 // ============================================================
 // ALERTAS
 // ============================================================
@@ -1151,12 +1155,12 @@ function renderAlerts() {
   if (perm==='granted') { box.style.display='none'; }
   else if (perm==='denied') { document.getElementById('notif-st').innerHTML='Notificaciones bloqueadas. Habilitalas en la configuracion del navegador.'; }
   else { box.style.display='block'; }
- 
+
   var rems = C.reminders; var le = document.getElementById('rem-list');
   if (!rems.length) { le.innerHTML='<div class="empty-state">Sin recordatorios configurados</div>'; }
   else { var html=''; for(var i=0;i<rems.length;i++) html+='<div class="ritem"><span class="rtime">'+rems[i].time+'</span><span class="rmsg">'+rems[i].msg+'</span><button class="rdel" onclick="delRem('+i+')">&#x2715;</button></div>'; le.innerHTML=html; }
 }
- 
+
 function reqPerms() {
   if (typeof Notification==='undefined') { alert('Tu navegador no soporta notificaciones nativas'); return; }
   Notification.requestPermission(function(p) {
@@ -1164,7 +1168,7 @@ function reqPerms() {
     else document.getElementById('notif-st').innerHTML='Permiso denegado.';
   });
 }
- 
+
 function addRem() {
   var time = document.getElementById('r-time').value; var msg = document.getElementById('r-msg').value.trim();
   if (!time||!msg) { alert('Completa la hora y el mensaje'); return; }
@@ -1172,23 +1176,23 @@ function addRem() {
   else { C.reminders.push({ time:time, msg:msg, lastFired:'' }); toLocal(); renderAlerts(); }
   document.getElementById('r-time').value=''; document.getElementById('r-msg').value='';
 }
- 
+
 function delRem(idx) {
   if (USE_API) { callAPI({ clientId: CLIENT_ID, action:'delRem', idx:idx }, function() { loadAll(); renderAlerts(); }); return; }
   C.reminders.splice(idx,1); toLocal(); renderAlerts();
 }
- 
+
 function showBanner(msg) {
   var el = document.createElement('div'); el.className='banner'; el.innerHTML=msg;
   document.body.appendChild(el);
   setTimeout(function() { if(el.parentNode) el.parentNode.removeChild(el); }, 5000);
 }
- 
+
 function fireNotif(title, body) {
   showBanner(body);
   if (typeof Notification!=='undefined'&&Notification.permission==='granted') { try { new Notification(title,{body:body}); } catch(e) {} }
 }
- 
+
 function checkRems() {
   var now=new Date(); var time=pad2(now.getHours())+':'+pad2(now.getMinutes()); var today=dateKey(now);
   var changed=false;
@@ -1207,11 +1211,11 @@ function checkRems() {
     if (ydc&&tdc2&&ydc!==tdc2) fireNotif('Buenos dias!','Hoy '+kidsLabel()+' estan con '+whoCalendarLabel(tdc2));
   }
 }
- 
+
 document.getElementById('pin-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) submitPin(); };
 document.getElementById('bud-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) saveBud(); };
 document.getElementById('list-inp').onkeyup = function(e) { if((e.keyCode||e.which)===13) addListItem(); };
- 
+
 // ============================================================
 // LISTA DE COMPRAS (sincronizada en Google Sheets)
 // ============================================================
@@ -1231,7 +1235,7 @@ function toggleShareShopping() {
   if (USE_API) callAPI({ clientId: CLIENT_ID, action: 'setShareShop', value: C.shareShopping ? 'true' : 'false' }, null);
   showBanner(C.shareShopping ? 'Lista compartida con el otro progenitor' : 'Lista solo para vos');
 }
- 
+
 function addListItem() {
   var inp = document.getElementById('list-inp');
   var name = inp.value.trim();
@@ -1241,25 +1245,25 @@ function addListItem() {
   inp.value = '';
   persistShopping(function() { inp.focus(); renderLista(); });
 }
- 
+
 function toggleListItem(id) {
   for (var i = 0; i < C.shoppingList.length; i++) {
     if (C.shoppingList[i].id === id) { C.shoppingList[i].done = !C.shoppingList[i].done; break; }
   }
   persistShopping(function() { renderLista(); });
 }
- 
+
 function delListItem(id) {
   C.shoppingList = (C.shoppingList || []).filter(function(it) { return it.id !== id; });
   persistShopping(function() { renderLista(); });
 }
- 
+
 function clearAcquired() {
   if (!confirm('Limpiar todos los items adquiridos?')) return;
   C.shoppingList = (C.shoppingList || []).filter(function(it) { return !it.done; });
   persistShopping(function() { renderLista(); });
 }
- 
+
 function listItemHtml(item) {
   var cbCls  = 'list-cb' + (item.done ? ' done' : '');
   var nameCls = 'list-name' + (item.done ? ' done' : '');
@@ -1270,25 +1274,25 @@ function listItemHtml(item) {
     '<button class="list-del" onclick="delListItem(\'' + item.id + '\')">&#x2715;</button>' +
   '</div>';
 }
- 
+
 function renderLista() {
   var list    = C.shoppingList || [];
   var pending = list.filter(function(i) { return !i.done; });
   var done    = list.filter(function(i) { return i.done; });
- 
+
   var pEl = document.getElementById('list-pending');
   var dEl = document.getElementById('list-done');
   var dCard = document.getElementById('list-done-card');
   var pCount = document.getElementById('list-pending-count');
   var dCount = document.getElementById('list-done-count');
- 
+
   if (pCount) pCount.innerHTML = pending.length ? '(' + pending.length + ')' : '';
   if (dCount) dCount.innerHTML = done.length ? '(' + done.length + ')' : '';
- 
+
   pEl.innerHTML = pending.length
     ? (function() { var h = ''; for (var i = 0; i < pending.length; i++) h += listItemHtml(pending[i]); return h; })()
     : '<div class="empty-state">Lista vacia — agrega el primer item arriba</div>';
- 
+
   dCard.style.display = done.length ? '' : 'none';
   dEl.innerHTML = (function() { var h = ''; for (var i = 0; i < done.length; i++) h += listItemHtml(done[i]); return h; })();
 }
@@ -1345,14 +1349,14 @@ function savePanelUi() {
     showBanner('Personalizacion guardada');
   }
 }
- 
+
 // ============================================================
 // INIT
 // ============================================================
 var _n = new Date();
 calYear  = _n.getFullYear() >= 2026 ? _n.getFullYear() : 2026;
 calMonth = _n.getFullYear() === 2026 ? _n.getMonth() : 4;
- 
+
 fillCountrySelect();
 applyUiForm();
 tick();
