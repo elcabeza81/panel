@@ -504,9 +504,29 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 // ============================================================
 // ** PEGAR TU URL DEL APPS SCRIPT AQUI **
 // ============================================================
-var API_URL = 'https://script.google.com/macros/s/AKfycbx9M1lPTUccRc2TQ5U4eu3sGOcXsSb2j9XaUpE-Geq3diHnxPGHlKztdzfuH7Pn39Ri/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycbwL8g65nk13jb34zEdQz4jjZpnrGVM1ExPI29ZFBwXsFlLh0IoCLc_aT0tv-AV4Z1za/exec';
 var USE_API = API_URL.indexOf('PEGAR') === -1;
 var CLIENT_ID = 'juanma';
+
+// ── Sistema de tokens de sesión ──────────────────────────────
+var SESSION_TOKEN = '';   // token en memoria, nunca en localStorage
+
+function setToken(token) {
+  SESSION_TOKEN = token || '';
+}
+function getToken() {
+  return SESSION_TOKEN;
+}
+function clearToken() {
+  SESSION_TOKEN = '';
+}
+// Extiende callAPI para inyectar token automáticamente en escrituras
+var WRITE_ACTIONS = {
+  addExp:1, delExp:1, clearMonth:1, setBudget:1, setOverride:1,
+  resetOverrides:1, addRem:1, delRem:1, saveShopping:1,
+  setShareShop:1, setPanelUi:1, logout:1
+};
+
 
 // PIN: validacion en servidor (Apps Script initPins). Fallback = hash local sin texto plano en el HTML.
 function authHash(pin, role) {
@@ -641,6 +661,10 @@ function callAPI(params, cb) {
     if (cb) cb(data && data.error ? new Error(data.error) : null, data);
   };
   params.callback = n;
+  // Inyectar token en acciones de escritura
+  if (params.action && WRITE_ACTIONS[params.action] && SESSION_TOKEN) {
+    params.token = SESSION_TOKEN;
+  }
   var qs = []; for (var k in params) { if (params.hasOwnProperty(k)) qs.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k])); }
   var s = document.createElement('script');
   s.src = API_URL + '?' + qs.join('&');
@@ -804,6 +828,8 @@ function resetCal() {
 // ============================================================
 function handleLock() {
   if (!isLocked()) {
+    if (USE_API && getToken()) callAPI({ clientId: CLIENT_ID, action: 'logout', token: getToken() }, null);
+    clearToken();
     viewMode = 'locked';
     if (privTimer) clearTimeout(privTimer);
     updLock(); renderAll(); updateAccessUI();
@@ -818,6 +844,8 @@ function applyViewMode(mode) {
   closePin(); updLock(); renderAll(); updateAccessUI(); updateNavAccess();
   if (privTimer) clearTimeout(privTimer);
   privTimer = setTimeout(function() {
+    if (USE_API && getToken()) callAPI({ clientId: CLIENT_ID, action: 'logout', token: getToken() }, null);
+    clearToken();
     viewMode = 'locked'; updLock(); renderAll(); updateAccessUI(); updateNavAccess();
   }, 120000);
 }
@@ -834,7 +862,11 @@ function submitPin() {
   }
   if (USE_API) {
     callAPI({ clientId: CLIENT_ID, action: 'validatePin', pin: v }, function(err, data) {
-      if (!err && data && data.mode) { applyViewMode(data.mode); return; }
+      if (!err && data && data.mode) {
+        if (data.token) setToken(data.token);
+        applyViewMode(data.mode);
+        return;
+      }
       var local = pinOkLocal(v);
       if (local) applyViewMode(local);
       else {
