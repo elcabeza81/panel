@@ -1492,6 +1492,7 @@ function savePanelUi() {
   toLocal();
   if (USE_API) {
     callAPI({
+      clientId: CLIENT_ID,
       action: 'setPanelUi',
       papaName: C.panelUi.papaName,
       mamaName: C.panelUi.mamaName,
@@ -1503,10 +1504,17 @@ function savePanelUi() {
       ownerHouse: C.panelUi.ownerHouse,
       exHouse: C.panelUi.exHouse,
       hasHelper: C.panelUi.hasHelper ? 'true' : 'false'
-    }, function() { loadAll(); showBanner('Personalizacion guardada'); });
+    }, function(err, data) {
+      if (err || (data && data.error)) {
+        showBanner('Error al guardar. Verificá tu conexión.');
+      } else {
+        loadAll();
+        showBanner('Personalizacion guardada ✓');
+      }
+    });
   } else {
     renderAll();
-    showBanner('Personalizacion guardada');
+    showBanner('Personalizacion guardada ✓');
   }
 }
 
