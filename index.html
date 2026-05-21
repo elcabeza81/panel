@@ -304,13 +304,19 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <div class="blabel">Efectivo · <span id="bmonth"></span></div>
       <button class="setbtn" onclick="openBud()">Editar</button>
     </div>
+    <!-- Selector tipo de presupuesto -->
+    <div class="pay-row" style="margin-bottom:12px">
+      <button id="bt-ef"  class="pay-btn act-ef" onclick="setBudgetType('efectivo')">💵 Efectivo</button>
+      <button id="bt-dig" class="pay-btn"        onclick="setBudgetType('digital')">🏦 Digital</button>
+      <button id="bt-all" class="pay-btn"        onclick="setBudgetType('todo')">🔀 Todo</button>
+    </div>
     <div class="brow">
       <div>
         <div class="blabel">Disponible</div>
         <div class="bbig" id="b-rem" style="color:#3fb950">&#9679;&#9679;&#9679;&#9679;&#9679;</div>
       </div>
       <div style="text-align:right">
-        <div class="blabel">Gastado efectivo</div>
+        <div class="blabel" id="b-spent-label">Gastado</div>
         <div class="bbig" id="b-spent" style="font-size:26px;color:#f85149">&#9679;&#9679;&#9679;&#9679;&#9679;</div>
       </div>
     </div>
@@ -338,6 +344,13 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <div class="dig-value" id="b-all" style="color:#e3b341">$0</div>
       <div class="dig-sub">todos los medios</div>
     </div>
+  </div>
+
+  <!-- Tarjeta de crédito — cuotas futuras (informativo) -->
+  <div class="card" id="b-tc-installments" style="display:none">
+    <div class="stitle" style="color:#8b5cf6">&#128179; Tarjeta de crédito — próximas cuotas</div>
+    <div style="font-size:11px;color:#7d8590;margin-bottom:10px">Informativo — no descuenta del presupuesto</div>
+    <div id="b-tc-list"></div>
   </div>
 
   <!-- Category breakdown -->
@@ -522,7 +535,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 // ============================================================
 // ** PEGAR TU URL DEL APPS SCRIPT AQUI **
 // ============================================================
-var API_URL = 'https://script.google.com/macros/s/AKfycbx9M1lPTUccRc2TQ5U4eu3sGOcXsSb2j9XaUpE-Geq3diHnxPGHlKztdzfuH7Pn39Ri/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycbx_8B3P4vbT9CYOjrUt2sf_lJjnKB2qRoIpGNBZkUQWfjV6AkTLRGDQPQglvhfs03FR/exec';
 var USE_API = API_URL.indexOf('PEGAR') === -1;
 var CLIENT_ID = 'juanma';
 
@@ -562,7 +575,7 @@ var privTimer  = null;
 var currentPayment = 'efectivo';
 
 var C = {
-  expenses: [], budget: 3000000, overrides: {}, reminders: [],
+  expenses: [], budget: 3000000, budgetType: 'efectivo', overrides: {}, reminders: [],
   shoppingList: [], shareShopping: true,
   panelUi: {
     papaName: 'Juan', mamaName: 'Maria',
@@ -731,8 +744,9 @@ function loadAll() {
   callAPI({ clientId: CLIENT_ID, action: 'getAll', month: month }, function(err, data) {
     if (!err && data && data.expenses !== undefined) {
       C.expenses  = data.expenses  || [];
-      C.budget    = data.budget    || 3000000;
-      C.overrides = data.overrides || {};
+      C.budget     = data.budget     || 3000000;
+      C.budgetType = data.budgetType || 'efectivo';
+      C.overrides  = data.overrides  || {};
       mergeShoppingFromServer(data.shoppingList);
       C.shareShopping = data.shareShopping !== false;
       if (data.panelUi) C.panelUi = mergeUi(data.panelUi);
@@ -756,7 +770,8 @@ function mergeUi(raw) {
 }
 
 function fromLocal() {
-  var b = localStorage.getItem('budget');   if (b) C.budget = parseFloat(b);
+  var b  = localStorage.getItem('budget');     if (b) C.budget     = parseFloat(b);
+  var bt = localStorage.getItem('budgetType'); if (bt) C.budgetType = bt;
   var e = localStorage.getItem(storKey());  if (e) { try { C.expenses  = JSON.parse(e); } catch(x) {} }
   var o = localStorage.getItem('cust_ov'); if (o) { try { C.overrides = JSON.parse(o); } catch(x) {} }
   var sl = localStorage.getItem('shopping_list'); if (sl) { try { C.shoppingList = JSON.parse(sl); } catch(x) {} }
@@ -766,7 +781,8 @@ function fromLocal() {
 }
 function getLocalRems() { var r = localStorage.getItem('rems'); if (!r) return []; try { return JSON.parse(r); } catch(x) { return []; } }
 function toLocal() {
-  localStorage.setItem('budget',  '' + C.budget);
+  localStorage.setItem('budget',     '' + C.budget);
+  localStorage.setItem('budgetType', '' + (C.budgetType || 'efectivo'));
   localStorage.setItem(storKey(), JSON.stringify(C.expenses));
   localStorage.setItem('cust_ov', JSON.stringify(C.overrides));
   localStorage.setItem('rems',    JSON.stringify(C.reminders));
@@ -794,6 +810,66 @@ function totalTarjeta() {
   var t = 0; for (var i = 0; i < C.expenses.length; i++) { if (C.expenses[i].payment === 'tarjeta') t += C.expenses[i].amt; } return t;
 }
 function totalAll() { var t = 0; for (var i = 0; i < C.expenses.length; i++) t += C.expenses[i].amt; return t; }
+
+// Total que descuenta del presupuesto según el tipo configurado (tarjeta NUNCA descuenta)
+function totalBudgetable() {
+  var bt = C.budgetType || 'efectivo';
+  if (bt === 'efectivo') return totalCash();
+  if (bt === 'digital')  return totalBilletera();
+  if (bt === 'todo')     return totalCash() + totalBilletera();
+  return totalCash();
+}
+
+// Cuotas futuras de tarjeta de crédito — mes a mes (primer cuota = mes siguiente a la compra)
+function getCreditInstallments() {
+  var months = {};
+  for (var i = 0; i < C.expenses.length; i++) {
+    var e = C.expenses[i];
+    if (e.payment !== 'tarjeta') continue;
+    var cuotas = e.cuotas || 1;
+    var cuotaAmt = Math.round(e.amt / cuotas);
+    var parts = (e.date || '').split('-');
+    if (parts.length < 3) continue;
+    // Primera cuota = mes siguiente a la compra
+    var firstMonth = new Date(parseInt(parts[0]), parseInt(parts[1]), 1); // mes+1
+    for (var c = 0; c < cuotas; c++) {
+      var md = new Date(firstMonth.getFullYear(), firstMonth.getMonth() + c, 1);
+      var key = md.getFullYear() + '-' + pad2(md.getMonth() + 1);
+      months[key] = (months[key] || 0) + cuotaAmt;
+    }
+  }
+  var today = new Date();
+  var curKey = today.getFullYear() + '-' + pad2(today.getMonth() + 1);
+  var keys = Object.keys(months).sort();
+  var result = [];
+  for (var k = 0; k < keys.length; k++) {
+    var p2 = keys[k].split('-');
+    var md2 = new Date(parseInt(p2[0]), parseInt(p2[1]) - 1, 1);
+    result.push({
+      month: keys[k],
+      label: MONTHS[md2.getMonth()] + ' ' + md2.getFullYear(),
+      total: months[keys[k]],
+      isFuture: keys[k] >= curKey
+    });
+  }
+  return result;
+}
+
+// Cambiar tipo de presupuesto
+function setBudgetType(type) {
+  C.budgetType = type;
+  toLocal();
+  if (USE_API) callAPI({ clientId: CLIENT_ID, action: 'setBudgetType', value: type }, null);
+  renderBudget(); renderHoy();
+  // Actualizar botones
+  var types = ['efectivo','digital','todo'];
+  var ids   = ['bt-ef','bt-dig','bt-all'];
+  var cls   = ['act-ef','act-bv','act-tc'];
+  for (var i = 0; i < types.length; i++) {
+    var btn = document.getElementById(ids[i]);
+    if (btn) btn.className = 'pay-btn' + (type === types[i] ? ' ' + cls[i] : '');
+  }
+}
 
 function getVisibleExpenses() {
   if (isExView()) return C.expenses.filter(function(e) { return !e.payment || e.payment === 'efectivo'; });
@@ -1144,7 +1220,7 @@ function renderHoy() {
     }
   }
 
-  var budget = C.budget; var cash = totalCash(); var rem = budget - cash;
+  var budget = C.budget; var spent = totalBudgetable(); var rem = budget - spent;
   var re = document.getElementById('h-rem'); var de = document.getElementById('h-dig');
   if (isLocked()) {
     re.innerHTML='&#9679;&#9679;&#9679;&#9679;&#9679;'; re.style.color='#7d8590';
@@ -1168,26 +1244,66 @@ function renderHoy() {
 // ============================================================
 function renderBudget() {
   var CAT_LABELS = getCatLabels();
-  var d = new Date(); var budget = C.budget; var cash = totalCash(); var rem = budget - cash;
-  var pct = Math.min(100, Math.round(cash/budget*100)); var avail = 100-pct;
+  var d = new Date(); var budget = C.budget;
+  var spent = totalBudgetable(); var rem = budget - spent;
+  var pct = Math.min(100, Math.round(spent/budget*100)); var avail = 100-pct;
+  var bt = C.budgetType || 'efectivo';
+  var btLabel = bt === 'efectivo' ? 'efectivo' : bt === 'digital' ? 'digital' : 'total';
 
   document.getElementById('bmonth').innerHTML  = MONTHS[d.getMonth()] + ' ' + d.getFullYear();
-  document.getElementById('b-rem').innerHTML   = fmtAmt(Math.max(0,rem));
+  document.getElementById('b-rem').innerHTML   = fmtAmt(Math.max(0, rem));
   document.getElementById('b-rem').style.color = isLocked()?'#7d8590':(rem<budget*0.2?'#f85149':rem<budget*0.4?'#e3b341':'#3fb950');
-  document.getElementById('b-spent').innerHTML = fmtAmt(cash);
+  document.getElementById('b-spent').innerHTML = fmtAmt(spent);
   document.getElementById('b-spent').style.color = isLocked()?'#7d8590':'#f85149';
   document.getElementById('b-total').innerHTML = fmtAmt(budget);
-  document.getElementById('b-pct').innerHTML   = isLocked()?'bloqueado':(pct+'% del efectivo');
+  document.getElementById('b-pct').innerHTML   = isLocked()?'bloqueado':(pct+'% ' + btLabel);
+  document.getElementById('b-spent-label').innerHTML = 'Gastado ' + btLabel;
+
+  // Actualizar botones de tipo de presupuesto
+  var types = ['efectivo','digital','todo'];
+  var ids   = ['bt-ef','bt-dig','bt-all'];
+  var cls   = ['act-ef','act-bv','act-tc'];
+  for (var bi = 0; bi < types.length; bi++) {
+    var btn = document.getElementById(ids[bi]);
+    if (btn) btn.className = 'pay-btn' + (bt === types[bi] ? ' ' + cls[bi] : '');
+  }
 
   var bar = document.getElementById('b-bar');
   if (isLocked()) { bar.style.width='0%'; bar.className='barfill bargreen'; }
   else { bar.style.width=avail+'%'; bar.className='barfill '+(avail<20?'barred':avail<40?'baryellow':'bargreen'); }
 
-  // Digital section
+  // Sección digital (solo acceso full)
   if (isFullAccess()) {
     document.getElementById('b-bv').innerHTML  = fmtMoney(totalBilletera());
     document.getElementById('b-tc').innerHTML  = fmtMoney(totalTarjeta());
     document.getElementById('b-all').innerHTML = fmtMoney(totalAll());
+  }
+
+  // Bloque tarjeta de crédito — cuotas futuras (informativo)
+  var tcBlock = document.getElementById('b-tc-installments');
+  if (tcBlock && isFullAccess()) {
+    var installs = getCreditInstallments();
+    if (!installs.length) {
+      tcBlock.style.display = 'none';
+    } else {
+      tcBlock.style.display = '';
+      var tcHtml = '';
+      var tcTotal = 0;
+      for (var ti = 0; ti < installs.length; ti++) {
+        var inst = installs[ti];
+        tcTotal += inst.total;
+        var rowColor = inst.isFuture ? '#e6edf3' : '#7d8590';
+        tcHtml += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #30363d;font-size:13px">';
+        tcHtml += '<span style="color:' + rowColor + '">' + inst.label + '</span>';
+        tcHtml += '<span style="color:#8b5cf6;font-weight:700">' + fmtMoney(inst.total) + '</span>';
+        tcHtml += '</div>';
+      }
+      tcHtml += '<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;font-weight:900">';
+      tcHtml += '<span style="color:#7d8590">Total comprometido</span>';
+      tcHtml += '<span style="color:#8b5cf6">' + fmtMoney(tcTotal) + '</span>';
+      tcHtml += '</div>';
+      document.getElementById('b-tc-list').innerHTML = tcHtml;
+    }
   }
 
   // Category breakdown (cash only for ex, all for full)
