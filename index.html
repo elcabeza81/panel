@@ -202,6 +202,19 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 </head>
 <body>
 
+<!-- SYNC OVERLAY (centrado, no bloquea el toque) -->
+<div id="sync-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:11000;pointer-events:none;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">
+  <div style="background:rgba(13,17,23,0.92);border:2px solid #e3b341;border-radius:18px;padding:26px 34px;text-align:center;-webkit-box-shadow:0 6px 30px rgba(0,0,0,0.7);box-shadow:0 6px 30px rgba(0,0,0,0.7);">
+    <div style="font-size:34px;margin-bottom:8px;-webkit-animation:syncspin 1s linear infinite;animation:syncspin 1s linear infinite;display:inline-block;">&#128260;</div>
+    <div style="font-size:18px;font-weight:900;color:#e3b341;letter-spacing:0.5px;">SINCRONIZANDO</div>
+    <div style="font-size:13px;color:#e6edf3;margin-top:4px;">Esperá unos segundos<br>para ver la información actualizada</div>
+  </div>
+</div>
+<style>
+@-webkit-keyframes syncspin { from { -webkit-transform:rotate(0deg);} to { -webkit-transform:rotate(360deg);} }
+@keyframes syncspin { from { transform:rotate(0deg);} to { transform:rotate(360deg);} }
+</style>
+
 <!-- PIN MODAL -->
 <div id="pin-ov" class="overlay">
   <div class="mbox">
@@ -742,6 +755,7 @@ function mergeShoppingFromServer(serverList) {
 // ============================================================
 function loadAll() {
   if (!USE_API) { fromLocal(); renderAll(); updateNavAccess(); return; }
+  if (!dataLoaded) { var so = document.getElementById('sync-overlay'); if (so) so.style.display = 'flex'; }
   var now = new Date(); var month = now.getFullYear() + '-' + pad2(now.getMonth()+1);
   callAPI({ clientId: CLIENT_ID, action: 'getAll', month: month }, function(err, data) {
     if (!err && data && data.expenses !== undefined) {
@@ -761,6 +775,7 @@ function loadAll() {
       C.reminders = ar; toLocal();
     } else { fromLocal(); }
     dataLoaded = true;
+    var so2 = document.getElementById('sync-overlay'); if (so2) so2.style.display = 'none';
     renderAll();
     updateNavAccess();
     applyUiForm();
@@ -1393,7 +1408,7 @@ function clearMonth() {
 // CALENDARIO
 // ============================================================
 function renderCal() {
-  document.getElementById('cal-title').innerHTML = MONTHS[calMonth] + ' ' + calYear + (dataLoaded ? '' : ' <span style="font-size:11px;color:#e3b341;font-weight:700">· sincronizando...</span>');
+  document.getElementById('cal-title').innerHTML = MONTHS[calMonth] + ' ' + calYear;
   var todayK = dateKey(new Date()); var first = new Date(calYear, calMonth, 1);
   var dow = first.getDay(); var offset = (dow===0)?6:dow-1;
   var total = new Date(calYear, calMonth+1, 0).getDate();
