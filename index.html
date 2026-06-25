@@ -204,6 +204,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .ev-opt { -webkit-flex: 1; flex: 1; min-width: 90px; padding: 9px 6px; border: 1px solid #30363d; border-radius: 8px; background: #21262d; color: #e6edf3; font-family: 'Nunito',sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; }
 .ev-opt.ev-sel { border-color: #e3b341; background: rgba(227,179,65,0.12); color: #e3b341; }
 .ev-other { font-size: 13px; color: #3fb950; margin-top: 12px; line-height: 1.4; font-weight: 700; }
+.ev-input { width: 100%; background: #21262d; border: 1px solid #e3b341; border-radius: 8px; color: #e6edf3; font-family: 'Nunito',sans-serif; font-size: 14px; padding: 9px; -webkit-appearance: none; margin-top: 8px; }
 .ev-list-item { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 9px 0; border-bottom: 1px solid #30363d; cursor: pointer; }
 .ev-list-item:last-child { border-bottom: none; }
 .ev-list-time { font-size: 12px; font-weight: 800; color: #e3b341; min-width: 50px; text-align: center; margin-right: 10px; line-height: 1.2; }
@@ -866,12 +867,21 @@ function loadAll() {
 function loadEvents() {
   if (!USE_API) return;
   var m = calYear + '-' + pad2(calMonth + 1);
+  // Limpia eventos del mes anterior y muestra "sincronizando" mientras llega la consulta
+  C.events = [];
+  var box = document.getElementById('event-list');
+  if (box) box.innerHTML = '<div class="empty-state"><span style="color:#e3b341;font-weight:700">&#128260; Sincronizando eventos...</span></div>';
+  var cal = document.getElementById('cal-title');
+  var syncing = ' <span id="cal-ev-sync" style="font-size:11px;color:#e3b341;font-weight:700">&#128260; eventos...</span>';
+  if (cal && cal.innerHTML.indexOf('cal-ev-sync') === -1) cal.innerHTML = cal.innerHTML + syncing;
   callAPI({ clientId: CLIENT_ID, action: 'getEvents', month: m }, function(err, data) {
-    if (!err && data && data.events) {
-      C.events = data.events;
-      renderCal();
-      renderEventList();
-    }
+    // ignorar respuestas viejas si el usuario ya cambió de mes otra vez
+    var nowM = calYear + '-' + pad2(calMonth + 1);
+    if (nowM !== m) return;
+    if (!err && data && data.events) C.events = data.events;
+    else C.events = [];
+    renderCal();
+    renderEventList();
   });
 }
 function mergeUi(raw) {
@@ -1711,37 +1721,68 @@ function openEvent(id) {
   if (!ev) return;
   _pendingEvent = ev;
   var extra = (C.eventExtras && C.eventExtras[ev.id]) ? C.eventExtras[ev.id] : null;
+  if (!_evDraft) {
+    _evDraft = extra ? {
+      kid: extra.kid || '', takenBy: extra.takenBy || '', takenByName: extra.takenByName || '',
+      otherWith: extra.otherWith || '', otherWithName: extra.otherWithName || '', note: extra.note || ''
+    } : { kid:'', takenBy:'', takenByName:'', otherWith:'', otherWithName:'', note:'' };
+  }
+  document.getElementById('ev-modal-body').innerHTML = buildEventModal(ev);
+  document.getElementById('ev-ov').className = 'overlay show';
+  updateEvOtherLine();
+}
+
+function buildEventModal(ev) {
+  var d = _evDraft;
   var parts = ev.date.split('-');
   var fecha = parts[2] + '/' + parts[1];
   var papa = (C.panelUi.papaName || 'Papá');
   var mama = (C.panelUi.mamaName || 'Mamá');
+  var kidNames = getKidNames();
   var html = '';
   html += '<div style="font-size:13px;color:#7d8590;margin-bottom:4px">' + fecha + (ev.time ? ' · ' + ev.time : '') + '</div>';
   html += '<div style="font-size:17px;font-weight:800;margin-bottom:14px">' + escHtml(ev.title) + '</div>';
 
-  // Selector de nena
-  var kidNames = getKidNames();
-  html += '<div class="ev-label">¿De quién es el cumple?</div><div class="ev-opts">';
+  // ¿De quién es el evento?  (nena / nena / juntas)
+  html += '<div class="ev-label">¿De quién es el evento?</div><div class="ev-opts">';
   for (var k = 0; k < kidNames.length; k++) {
-    var sel = extra && extra.kid === kidNames[k] ? ' ev-sel' : '';
+    var sel = d.kid === kidNames[k] ? ' ev-sel' : '';
     html += '<button class="ev-opt'+sel+'" onclick="evSetKid(\''+escAttr(kidNames[k])+'\')">'+escHtml(kidNames[k])+'</button>';
   }
+  var selJ = d.kid === 'juntas' ? ' ev-sel' : '';
+  html += '<button class="ev-opt'+selJ+'" onclick="evSetKid(\'juntas\')">Juntas</button>';
   html += '</div>';
 
-  // Quién la lleva
-  html += '<div class="ev-label">¿Quién la lleva?</div><div class="ev-opts">';
-  var sp = extra && extra.takenBy === 'papa' ? ' ev-sel' : '';
-  var sm = extra && extra.takenBy === 'mama' ? ' ev-sel' : '';
-  html += '<button class="ev-opt'+sp+'" onclick="evSetTaken(\'papa\')">'+escHtml(papa)+'</button>';
-  html += '<button class="ev-opt'+sm+'" onclick="evSetTaken(\'mama\')">'+escHtml(mama)+'</button>';
+  // ¿Quién la/las lleva?  (papa / mama / otro editable)
+  var ll = (d.kid === 'juntas') ? '¿Quién las lleva?' : '¿Quién la lleva?';
+  html += '<div class="ev-label">'+ll+'</div><div class="ev-opts">';
+  html += '<button class="ev-opt'+(d.takenBy==='papa'?' ev-sel':'')+'" onclick="evSetTaken(\'papa\')">'+escHtml(papa)+'</button>';
+  html += '<button class="ev-opt'+(d.takenBy==='mama'?' ev-sel':'')+'" onclick="evSetTaken(\'mama\')">'+escHtml(mama)+'</button>';
+  html += '<button class="ev-opt'+(d.takenBy==='otro'?' ev-sel':'')+'" onclick="evSetTaken(\'otro\')">Otro</button>';
   html += '</div>';
+  if (d.takenBy === 'otro') {
+    html += '<input type="text" class="ev-input" id="ev-taken-name" placeholder="¿Quién? (abuela, niñera...)" value="'+escAttr(d.takenByName)+'" oninput="_evDraft.takenByName=this.value;updateEvOtherLine()">';
+  }
+
+  // ¿Con quién se queda la otra nena? — solo si NO es "juntas" y hay nena elegida
+  if (d.kid && d.kid !== 'juntas') {
+    var kids = getKidNames();
+    var otherKid = '';
+    for (var i = 0; i < kids.length; i++) { if (kids[i] !== d.kid) { otherKid = kids[i]; break; } }
+    if (otherKid) {
+      html += '<div class="ev-label">¿Con quién se queda '+escHtml(otherKid)+'?</div><div class="ev-opts">';
+      html += '<button class="ev-opt'+(d.otherWith==='papa'?' ev-sel':'')+'" onclick="evSetOther(\'papa\')">'+escHtml(papa)+'</button>';
+      html += '<button class="ev-opt'+(d.otherWith==='mama'?' ev-sel':'')+'" onclick="evSetOther(\'mama\')">'+escHtml(mama)+'</button>';
+      html += '<button class="ev-opt'+(d.otherWith==='otro'?' ev-sel':'')+'" onclick="evSetOther(\'otro\')">Otro</button>';
+      html += '</div>';
+      if (d.otherWith === 'otro') {
+        html += '<input type="text" class="ev-input" id="ev-other-name" placeholder="¿Quién? (abuela, niñera...)" value="'+escAttr(d.otherWithName)+'" oninput="_evDraft.otherWithName=this.value;updateEvOtherLine()">';
+      }
+    }
+  }
 
   html += '<div id="ev-other-line" class="ev-other"></div>';
-
-  document.getElementById('ev-modal-body').innerHTML = html;
-  document.getElementById('ev-ov').className = 'overlay show';
-  _evDraft = extra ? { kid: extra.kid, takenBy: extra.takenBy, otherWith: extra.otherWith, note: extra.note } : { kid:'', takenBy:'', otherWith:'', note:'' };
-  updateEvOtherLine();
+  return html;
 }
 
 function getKidNames() {
@@ -1751,57 +1792,77 @@ function getKidNames() {
   return ['Maia', 'Clari'];
 }
 
-function evSetKid(k) { _evDraft.kid = k; reRenderEvOpts(); }
+function evSetKid(k) {
+  _evDraft.kid = k;
+  if (k === 'juntas') { _evDraft.otherWith = ''; _evDraft.otherWithName = ''; }
+  reRenderEvOpts();
+}
 function evSetTaken(t) {
   _evDraft.takenBy = t;
-  // la otra nena queda con el otro adulto, automáticamente
-  _evDraft.otherWith = t === 'papa' ? 'mama' : 'papa';
+  // Si lleva uno de los padres y hay una nena puntual, sugerir el otro para la que queda
+  if (_evDraft.kid && _evDraft.kid !== 'juntas') {
+    if (t === 'papa') _evDraft.otherWith = _evDraft.otherWith || 'mama';
+    else if (t === 'mama') _evDraft.otherWith = _evDraft.otherWith || 'papa';
+  }
   reRenderEvOpts();
-  updateEvOtherLine();
 }
+function evSetOther(t) { _evDraft.otherWith = t; reRenderEvOpts(); }
 
 function reRenderEvOpts() {
-  // re-render manteniendo el modal abierto
   if (_pendingEvent) {
-    var saved = _evDraft;
-    var ev = _pendingEvent;
-    C.eventExtras[ev.id] = { kid: saved.kid, takenBy: saved.takenBy, otherWith: saved.otherWith, note: saved.note || '' };
-    openEvent(ev.id);
-    _evDraft = saved;
+    document.getElementById('ev-modal-body').innerHTML = buildEventModal(_pendingEvent);
+    updateEvOtherLine();
   }
+}
+
+function adultLabel(role, name) {
+  var papa = (C.panelUi.papaName || 'Papá');
+  var mama = (C.panelUi.mamaName || 'Mamá');
+  if (role === 'papa') return papa;
+  if (role === 'mama') return mama;
+  if (role === 'otro')  return name && name.trim() ? name.trim() : 'otra persona';
+  return '';
 }
 
 function updateEvOtherLine() {
   var line = document.getElementById('ev-other-line');
   if (!line) return;
-  if (!_evDraft.takenBy || !_evDraft.kid) { line.innerHTML = ''; return; }
+  var d = _evDraft;
+  if (!d.kid || !d.takenBy) { line.innerHTML = ''; return; }
+  var lleva = adultLabel(d.takenBy, d.takenByName);
+  if (d.kid === 'juntas') {
+    line.innerHTML = 'Las lleva ' + lleva + '.';
+    return;
+  }
   var kids = getKidNames();
   var otherKid = '';
-  for (var i = 0; i < kids.length; i++) { if (kids[i] !== _evDraft.kid) { otherKid = kids[i]; break; } }
-  var papa = (C.panelUi.papaName || 'Papá');
-  var mama = (C.panelUi.mamaName || 'Mamá');
-  var lleva = _evDraft.takenBy === 'papa' ? papa : mama;
-  var quedaAdulto = _evDraft.otherWith === 'papa' ? papa : mama;
-  var txt = lleva + ' lleva a ' + _evDraft.kid;
-  if (otherKid) txt += '. ' + otherKid + ' se queda con ' + quedaAdulto + '.';
+  for (var i = 0; i < kids.length; i++) { if (kids[i] !== d.kid) { otherKid = kids[i]; break; } }
+  var txt = lleva + ' lleva a ' + d.kid;
+  if (otherKid && d.otherWith) {
+    txt += '. ' + otherKid + ' se queda con ' + adultLabel(d.otherWith, d.otherWithName) + '.';
+  } else if (otherKid) {
+    txt += '.';
+  }
   line.innerHTML = txt;
 }
 
 function saveEvent() {
   if (!_pendingEvent) { closeEvent(); return; }
   var ev = _pendingEvent;
+  var d = _evDraft;
   C.eventExtras[ev.id] = {
-    kid: _evDraft.kid, takenBy: _evDraft.takenBy,
-    otherWith: _evDraft.otherWith, note: _evDraft.note || ''
+    kid: d.kid, takenBy: d.takenBy, takenByName: d.takenByName || '',
+    otherWith: d.otherWith, otherWithName: d.otherWithName || '', note: d.note || ''
   };
   if (USE_API) {
     callAPI({ clientId: CLIENT_ID, action: 'saveEventExtra', eventId: ev.id,
-      kid: _evDraft.kid, takenBy: _evDraft.takenBy, otherWith: _evDraft.otherWith, note: _evDraft.note || '' }, null);
+      kid: d.kid, takenBy: d.takenBy, takenByName: d.takenByName || '',
+      otherWith: d.otherWith, otherWithName: d.otherWithName || '', note: d.note || '' }, null);
   }
   closeEvent();
   renderCal();
   renderEventList();
-  showBanner('Cumpleaños guardado');
+  showBanner('Evento guardado');
 }
 
 function closeEvent() {
@@ -1822,8 +1883,9 @@ function renderEventList() {
     var extra = C.eventExtras[ev.id];
     var sub = '';
     if (extra && extra.takenBy) {
-      var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
-      sub = '<div class="ev-list-sub">' + (extra.takenBy==='papa'?papa:mama) + ' lleva a ' + escHtml(extra.kid||'') + '</div>';
+      var lleva = adultLabel(extra.takenBy, extra.takenByName);
+      if (extra.kid === 'juntas') sub = '<div class="ev-list-sub">Las lleva ' + escHtml(lleva) + '</div>';
+      else sub = '<div class="ev-list-sub">' + escHtml(lleva) + ' lleva a ' + escHtml(extra.kid||'') + '</div>';
     }
     html += '<div class="ev-list-item" onclick="openEvent(\''+(''+ev.id).replace(/\'/g,'')+'\')">' +
             '<div class="ev-list-time">'+fecha+(ev.time?'<br>'+ev.time:'')+'</div>' +
