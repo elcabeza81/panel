@@ -1745,12 +1745,10 @@ function openEvent(id) {
 }
 
 function getKidNames() {
-  // Si el usuario configuró nombres de hijas, usarlos; si no, genéricos.
+  // Si el usuario configuró nombres de hijas, usarlos.
   if (C.panelUi.kidsNames && C.panelUi.kidsNames.length) return C.panelUi.kidsNames;
-  var n = C.panelUi.kidsCount || 2;
-  var arr = [];
-  for (var i = 0; i < n; i++) arr.push('Nena ' + (i+1));
-  return arr;
+  // Default para el panel personal: las hijas por su nombre.
+  return ['Maia', 'Clari'];
 }
 
 function evSetKid(k) { _evDraft.kid = k; reRenderEvOpts(); }
