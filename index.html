@@ -492,7 +492,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <div id="ev-modal-body"></div>
     <div class="mbtns" style="margin-top:16px">
       <button class="mbtn-c" onclick="closeEvent()">Cerrar</button>
-      <button class="mbtn-ok" onclick="saveEvent()">Guardar</button>
+      <button class="mbtn-ok" id="ev-save-btn" onclick="saveEvent()">Guardar</button>
     </div>
   </div>
 </div>
@@ -1728,6 +1728,8 @@ function openEvent(id) {
     } : { kid:'', takenBy:'', takenByName:'', otherWith:'', otherWithName:'', note:'' };
   }
   document.getElementById('ev-modal-body').innerHTML = buildEventModal(ev);
+  var saveBtn = document.getElementById('ev-save-btn');
+  if (saveBtn) saveBtn.innerHTML = (extra && extra.takenBy) ? 'Cambiar' : 'Guardar';
   document.getElementById('ev-ov').className = 'overlay show';
   updateEvOtherLine();
 }
