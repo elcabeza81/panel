@@ -198,6 +198,27 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
   .cuotas-row { -webkit-flex-wrap: wrap; flex-wrap: wrap; }
   .cuotas-row select { min-width: 0; -webkit-flex: 1; flex: 1; }
 }
+.cal-event { font-size: 8px; line-height: 1.1; font-weight: 800; color: #e3b341; background: rgba(227,179,65,0.15); border-radius: 3px; padding: 1px 3px; margin-top: 2px; width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.ev-label { font-size: 12px; font-weight: 800; color: #7d8590; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
+.ev-opts { display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; gap: 6px; }
+.ev-opt { -webkit-flex: 1; flex: 1; min-width: 90px; padding: 9px 6px; border: 1px solid #30363d; border-radius: 8px; background: #21262d; color: #e6edf3; font-family: 'Nunito',sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; }
+.ev-opt.ev-sel { border-color: #e3b341; background: rgba(227,179,65,0.12); color: #e3b341; }
+.ev-other { font-size: 13px; color: #3fb950; margin-top: 12px; line-height: 1.4; font-weight: 700; }
+.ev-list-item { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 9px 0; border-bottom: 1px solid #30363d; cursor: pointer; }
+.ev-list-item:last-child { border-bottom: none; }
+.ev-list-time { font-size: 12px; font-weight: 800; color: #e3b341; min-width: 50px; text-align: center; margin-right: 10px; line-height: 1.2; }
+.ev-list-main { -webkit-flex: 1; flex: 1; }
+.ev-list-title { font-size: 14px; font-weight: 700; }
+.ev-list-sub { font-size: 11px; color: #7d8590; margin-top: 1px; }
+.hist-item { padding: 8px 0; border-bottom: 1px solid #30363d; }
+.hist-item:last-child { border-bottom: none; }
+.hist-main { font-size: 13px; }
+.hist-meta { font-size: 11px; color: #7d8590; margin-top: 1px; }
+.hist-bulk { font-size: 9px; background: rgba(63,185,80,0.15); color: #3fb950; padding: 1px 5px; border-radius: 4px; font-weight: 800; text-transform: uppercase; }
+.apply-row { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 8px 0; border-bottom: 1px solid #30363d; cursor: pointer; }
+.apply-row input { margin-right: 10px; -webkit-transform: scale(1.3); transform: scale(1.3); }
+.apply-date { font-size: 13px; font-weight: 800; min-width: 78px; }
+.apply-detail { font-size: 12px; color: #7d8590; margin-left: 8px; }
 </style>
 </head>
 <body>
@@ -445,7 +466,61 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <button class="setbtn" onclick="printCal()" style="border-color:#e3b341;color:#e3b341">&#128424; Imprimir para Maia</button>
     <button class="setbtn" onclick="resetCal()">Restaurar calendario original</button>
   </div>
+  <div style="margin-top:8px">
+    <button class="setbtn" onclick="openApplyAgreement()" style="width:100%;border-color:#3fb950;color:#3fb950">&#9851; Aplicar acuerdo desde un día</button>
+  </div>
+
+  <!-- EVENTOS DEL MES (calendario Familia) -->
+  <div class="card" style="margin-top:12px">
+    <div class="stitle" style="margin-bottom:8px">&#127874; Eventos del mes</div>
+    <div id="event-list"><div class="empty-state">Cargando eventos...</div></div>
+  </div>
+
+  <!-- HISTORIAL DE CAMBIOS -->
+  <div style="margin-top:4px">
+    <button class="setbtn" onclick="toggleHistory()" style="width:100%">&#128340; Ver historial de cambios</button>
+    <div id="history-wrap" style="display:none;margin-top:8px">
+      <div class="card"><div id="history-list"><div class="empty-state">Sin cambios registrados todavía</div></div></div>
+    </div>
+  </div>
 </div>
+
+<!-- MODAL EVENTO/CUMPLE -->
+<div id="ev-ov" class="overlay">
+  <div class="mbox" style="width:330px;text-align:left">
+    <div id="ev-modal-body"></div>
+    <div class="mbtns" style="margin-top:16px">
+      <button class="mbtn-c" onclick="closeEvent()">Cerrar</button>
+      <button class="mbtn-ok" onclick="saveEvent()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL APLICAR ACUERDO: elegir fecha -->
+<div id="apply-ov" class="overlay">
+  <div class="mbox" style="width:320px">
+    <div class="mtitle">Aplicar acuerdo desde un día</div>
+    <div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">El acuerdo base se aplicará desde la fecha que elijas, 2 años hacia adelante. Si hay cambios manuales, te dejo decidir cuáles conservar.</div>
+    <input type="date" id="apply-date-inp" class="minput" style="font-size:16px">
+    <div class="mbtns" style="margin-top:12px">
+      <button class="mbtn-c" onclick="closeApplyDate()">Cancelar</button>
+      <button class="mbtn-ok" onclick="computeApply()">Continuar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL APLICAR ACUERDO: revisar conflictos -->
+<div id="apply-review-ov" class="overlay">
+  <div class="mbox" style="width:340px;text-align:left;max-height:80vh;overflow-y:auto">
+    <div class="mtitle">Revisá los cambios manuales</div>
+    <div id="apply-review-body"></div>
+    <div class="mbtns" style="margin-top:14px">
+      <button class="mbtn-c" onclick="closeApplyReview()">Cancelar</button>
+      <button class="mbtn-ok" onclick="confirmApply()">Aplicar acuerdo</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- LISTA COMPRAS -->
 <div id="v-lista" class="view">
@@ -549,7 +624,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 // ============================================================
 // ** PEGAR TU URL DEL APPS SCRIPT AQUI **
 // ============================================================
-var API_URL = 'https://script.google.com/macros/s/AKfycbx_8B3P4vbT9CYOjrUt2sf_lJjnKB2qRoIpGNBZkUQWfjV6AkTLRGDQPQglvhfs03FR/exec';
+var API_URL = 'https://script.google.com/macros/s/AKfycbxUh5Ca_gS_8hcJ-FS4_PbRSlrCs1qGRqKnZS6T83l7yS6yxid7VPpopzXoalqZrZWK/exec';
 var USE_API = API_URL.indexOf('PEGAR') === -1;
 var CLIENT_ID = 'juanma';
 var dataLoaded = false;
@@ -592,6 +667,7 @@ var currentPayment = 'efectivo';
 var C = {
   expenses: [], budget: 3000000, budgetType: 'efectivo', overrides: {}, reminders: [],
   shoppingList: [], shareShopping: true,
+  events: [], eventExtras: {}, overrideHistory: [],
   panelUi: {
     papaName: 'Juan', mamaName: 'Maria',
     kidsTemplate: 'l@s chic@s', kidsTemplateSingular: 'l@ chic@', kidsCount: 2,
@@ -772,13 +848,30 @@ function loadAll() {
           if (lr[j].time === ar[i].time && lr[j].msg === ar[i].msg) ar[i].lastFired = lr[j].lastFired || '';
         }
       }
-      C.reminders = ar; toLocal();
+      C.reminders = ar;
+      C.overrideHistory = data.overrideHistory || [];
+      C.eventExtras = data.eventExtras || {};
+      toLocal();
     } else { fromLocal(); }
     dataLoaded = true;
     var so2 = document.getElementById('sync-overlay'); if (so2) so2.style.display = 'none';
     renderAll();
     updateNavAccess();
     applyUiForm();
+    loadEvents();
+  });
+}
+
+// Trae los eventos del calendario Familia (Google Calendar) para el mes visible
+function loadEvents() {
+  if (!USE_API) return;
+  var m = calYear + '-' + pad2(calMonth + 1);
+  callAPI({ clientId: CLIENT_ID, action: 'getEvents', month: m }, function(err, data) {
+    if (!err && data && data.events) {
+      C.events = data.events;
+      renderCal();
+      renderEventList();
+    }
   });
 }
 function mergeUi(raw) {
@@ -921,6 +1014,9 @@ function getHelperLocation(ds) {
 // Día pendiente de confirmar
 var _pendingDay = null;
 var _pendingWho = null;
+var _pendingEvent = null;
+var _evDraft = null;
+var _applyChanges = null;
 
 function toggleDay(ds) {
   var nw = getCustody(ds) === 'papa' ? 'mama' : 'papa';
@@ -971,7 +1067,13 @@ function confirmCalChange() {
     closeCalModal();
     if (USE_API) {
       callAPI({ clientId: CLIENT_ID, action: 'setOverride', date: ds, who: nw }, function(err) {
-        if (err) showBanner('Cambio guardado localmente. Verifica tu conexion.');
+        if (err) {
+          // Reintento silencioso una vez; el dato ya está guardado local y se
+          // re-sincroniza en el próximo loadAll. Solo avisar si el reintento falla.
+          callAPI({ clientId: CLIENT_ID, action: 'setOverride', date: ds, who: nw }, function(err2) {
+            if (err2) showBanner('Sin conexión: el cambio se guardó y se subirá al reconectar.');
+          });
+        }
       });
     }
   }
@@ -1025,6 +1127,149 @@ function doResetCal() {
   C.overrides = {};
   if (USE_API) callAPI({ clientId: CLIENT_ID, action: 'resetOverrides' }, function() { loadAll(); });
   else { toLocal(); renderCal(); renderHoy(); }
+}
+
+// ── Aplicar acuerdo desde un día (patrón base, 2 años adelante) ──
+function basePatternFor(ds) {
+  var p = ds.split('-'); var d = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
+  var diff = Math.round((d.getTime() - CYCLE_START) / 86400000);
+  if (diff < 0) return null;
+  return CYCLE[((diff % 14) + 14) % 14];
+}
+
+function openApplyAgreement() {
+  // pide PIN si está bloqueado (igual que cambiar un día)
+  if (isLocked() && USE_API) {
+    var v = prompt('Ingresá tu PIN para aplicar el acuerdo:');
+    if (!v) return;
+    callAPI({ clientId: CLIENT_ID, action: 'validatePin', pin: v }, function(err, data) {
+      if (!err && data && data.mode) { if (data.token) setToken(data.token); applyViewMode(data.mode); pickApplyDate(); }
+      else { var local = pinOkLocal(v); if (local) { applyViewMode(local); pickApplyDate(); } else showBanner('PIN incorrecto'); }
+    });
+    return;
+  }
+  pickApplyDate();
+}
+
+function pickApplyDate() {
+  var hoy = dateKey(new Date());
+  document.getElementById('apply-date-inp').value = hoy;
+  document.getElementById('apply-ov').className = 'overlay show';
+}
+function closeApplyDate() { document.getElementById('apply-ov').className = 'overlay'; }
+
+function computeApply() {
+  var fromDate = document.getElementById('apply-date-inp').value;
+  if (!fromDate) { showBanner('Elegí una fecha'); return; }
+  closeApplyDate();
+  // recorrer 2 años desde fromDate
+  var start = new Date(fromDate + 'T12:00:00');
+  var changes = [];      // cambios a aplicar (donde no hay override, o el usuario decide)
+  var conflicts = [];    // overrides existentes a revisar
+  var d = new Date(start.getTime());
+  var endTs = start.getTime() + 730 * 86400000; // ~2 años
+  while (d.getTime() <= endTs) {
+    var dk = dateKey(d);
+    var base = basePatternFor(dk);
+    if (base) {
+      if (C.overrides[dk]) {
+        // hay override manual: solo es conflicto si difiere del patrón base
+        if (C.overrides[dk] !== base) {
+          conflicts.push({ date: dk, current: C.overrides[dk], base: base, keep: true });
+        }
+      } else {
+        // no hay override; aplicar patrón base como override explícito no es necesario
+        // (el patrón ya rige solo). No agregamos nada.
+      }
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  _applyChanges = { from: fromDate, conflicts: conflicts };
+  if (conflicts.length === 0) {
+    showBanner('No hay cambios manuales en ese rango. El acuerdo ya rige tal cual.');
+    return;
+  }
+  renderApplyReview();
+}
+
+function renderApplyReview() {
+  var box = document.getElementById('apply-review-body');
+  var cf = _applyChanges.conflicts;
+  var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
+  var html = '<div style="font-size:13px;color:#7d8590;margin-bottom:12px">Encontré ' + cf.length + ' día(s) con cambios manuales distintos al acuerdo. Destildá los que quieras <b>reemplazar</b> por el acuerdo. Los que dejes tildados se <b>conservan</b> como están.</div>';
+  for (var i = 0; i < cf.length; i++) {
+    var c = cf[i];
+    var parts = c.date.split('-');
+    var fecha = parts[2] + '/' + parts[1] + '/' + parts[0];
+    var curN = c.current === 'papa' ? papa : mama;
+    var baseN = c.base === 'papa' ? papa : mama;
+    html += '<label class="apply-row"><input type="checkbox" ' + (c.keep?'checked':'') + ' onchange="_applyChanges.conflicts['+i+'].keep=this.checked">' +
+      '<span class="apply-date">'+fecha+'</span>' +
+      '<span class="apply-detail">manual: <b>'+curN+'</b> · acuerdo: '+baseN+'</span></label>';
+  }
+  document.getElementById('apply-review-ov').className = 'overlay show';
+  box.innerHTML = html;
+}
+function closeApplyReview() { document.getElementById('apply-review-ov').className = 'overlay'; }
+
+function confirmApply() {
+  var cf = _applyChanges.conflicts;
+  var toReplace = [];
+  for (var i = 0; i < cf.length; i++) {
+    if (!cf[i].keep) {
+      // reemplazar = volver al patrón base: quitar el override (borrarlo)
+      toReplace.push({ date: cf[i].date, who: cf[i].base });
+    }
+  }
+  closeApplyReview();
+  if (!toReplace.length) { showBanner('No se reemplazó ningún día. Todo queda como estaba.'); return; }
+  // aplicar local
+  for (var j = 0; j < toReplace.length; j++) {
+    // si el patrón base coincide, podemos borrar el override; pero para registrar
+    // historial y mantener consistencia, lo seteamos explícito al valor base.
+    C.overrides[toReplace[j].date] = toReplace[j].who;
+  }
+  toLocal(); renderCal(); renderHoy();
+  if (USE_API) {
+    callAPI({ clientId: CLIENT_ID, action: 'setOverridesBulk', changes: JSON.stringify(toReplace) }, function(err) {
+      if (err) showBanner('Aplicado localmente; se subirá al reconectar.');
+      else { showBanner(toReplace.length + ' día(s) ajustados al acuerdo'); loadAll(); }
+    });
+  } else {
+    showBanner(toReplace.length + ' día(s) ajustados al acuerdo');
+  }
+}
+
+// ── Historial de cambios de custodia ─────────────────────────
+function renderHistory() {
+  var box = document.getElementById('history-list');
+  if (!box) return;
+  var h = (C.overrideHistory || []).slice().reverse(); // más reciente primero
+  if (!h.length) { box.innerHTML = '<div class="empty-state">Sin cambios registrados todavía</div>'; return; }
+  var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
+  var html = '';
+  var limit = Math.min(h.length, 40);
+  for (var i = 0; i < limit; i++) {
+    var e = h[i];
+    if (e.date === '*') {
+      html += '<div class="hist-item"><div class="hist-main">Calendario restaurado al esquema original</div><div class="hist-meta">'+ (e.by==='ex'?mama:papa) +' · '+e.at+'</div></div>';
+      continue;
+    }
+    var parts = e.date.split('-');
+    var fecha = parts[2] + '/' + parts[1];
+    var whoN = e.who === 'papa' ? papa : (e.who === 'mama' ? mama : e.who);
+    var quien = e.by === 'ex' ? mama : papa;
+    var bulkTag = e.bulk ? ' <span class="hist-bulk">acuerdo</span>' : '';
+    html += '<div class="hist-item"><div class="hist-main">'+fecha+' → <b>'+whoN+'</b>'+bulkTag+'</div>' +
+            '<div class="hist-meta">por '+quien+' · '+e.at+'</div></div>';
+  }
+  box.innerHTML = html;
+}
+function toggleHistory() {
+  var box = document.getElementById('history-wrap');
+  if (!box) return;
+  if (box.style.display === 'none' || !box.style.display) { box.style.display = 'block'; renderHistory(); }
+  else box.style.display = 'none';
 }
 
 // ============================================================
@@ -1186,7 +1431,7 @@ function showView(name) {
   for (var j = 0; j < bs.length; j++) bs[j].className = 'navbtn' + (ns[j]===name?' act':'');
   if (name==='hoy')  renderHoy();
   if (name==='pres') { updateAccessUI(); renderBudget(); }
-  if (name==='cal')  renderCal();
+  if (name==='cal')  { renderCal(); renderEventList(); loadEvents(); }
   if (name==='alt')  renderAlerts();
   if (name === 'lista') renderLista();
 }
@@ -1429,7 +1674,8 @@ function renderCal() {
         var wcls = who==='papa'?'ccwho w-papa':(who==='mama'?'ccwho w-mama':'ccwho');
         var wlbl = who==='papa'?'P':(who==='mama'?'M':'·');
         var helperHtml = loc ? '<div class="cchelper">'+loc+'</div>' : '';
-        html += '<div class="'+cls+'"><div class="ccnum">'+day+'</div><span class="'+wcls+'" onclick="toggleDay(\''+dk+'\')">'+wlbl+'</span>'+helperHtml+'</div>';
+        var evHtml = eventsForDay(dk);
+        html += '<div class="'+cls+'"><div class="ccnum">'+day+'</div><span class="'+wcls+'" onclick="toggleDay(\''+dk+'\')">'+wlbl+'</span>'+helperHtml+evHtml+'</div>';
       }
     }
     html += '</div>';
@@ -1437,8 +1683,159 @@ function renderCal() {
   document.getElementById('calbody').innerHTML = html;
 }
 
-function calPrev() { if(calMonth===0){calMonth=11;calYear--;}else calMonth--; renderCal(); }
-function calNext() { if(calMonth===11){calMonth=0;calYear++;}else calMonth++; renderCal(); }
+function calPrev() { if(calMonth===0){calMonth=11;calYear--;}else calMonth--; renderCal(); loadEvents(); }
+function calNext() { if(calMonth===11){calMonth=0;calYear++;}else calMonth++; renderCal(); loadEvents(); }
+
+// ── Eventos del calendario Familia ───────────────────────────
+function eventsForDay(dk) {
+  if (!C.events || !C.events.length) return '';
+  var html = '';
+  for (var i = 0; i < C.events.length; i++) {
+    var ev = C.events[i];
+    if (ev.date !== dk) continue;
+    var label = (ev.time ? ev.time + ' ' : '') + ev.title;
+    if (label.length > 16) label = label.substring(0, 15) + '…';
+    var safeId = ('' + ev.id).replace(/'/g, '');
+    html += '<div class="cal-event" onclick="openEvent(\'' + safeId + '\')" title="' + escAttr((ev.time?ev.time+' ':'')+ev.title) + '">' + escHtml(label) + '</div>';
+  }
+  return html;
+}
+
+function findEvent(id) {
+  for (var i = 0; i < (C.events||[]).length; i++) { if ('' + C.events[i].id === '' + id) return C.events[i]; }
+  return null;
+}
+
+function openEvent(id) {
+  var ev = findEvent(id);
+  if (!ev) return;
+  _pendingEvent = ev;
+  var extra = (C.eventExtras && C.eventExtras[ev.id]) ? C.eventExtras[ev.id] : null;
+  var parts = ev.date.split('-');
+  var fecha = parts[2] + '/' + parts[1];
+  var papa = (C.panelUi.papaName || 'Papá');
+  var mama = (C.panelUi.mamaName || 'Mamá');
+  var html = '';
+  html += '<div style="font-size:13px;color:#7d8590;margin-bottom:4px">' + fecha + (ev.time ? ' · ' + ev.time : '') + '</div>';
+  html += '<div style="font-size:17px;font-weight:800;margin-bottom:14px">' + escHtml(ev.title) + '</div>';
+
+  // Selector de nena
+  var kidNames = getKidNames();
+  html += '<div class="ev-label">¿De quién es el cumple?</div><div class="ev-opts">';
+  for (var k = 0; k < kidNames.length; k++) {
+    var sel = extra && extra.kid === kidNames[k] ? ' ev-sel' : '';
+    html += '<button class="ev-opt'+sel+'" onclick="evSetKid(\''+escAttr(kidNames[k])+'\')">'+escHtml(kidNames[k])+'</button>';
+  }
+  html += '</div>';
+
+  // Quién la lleva
+  html += '<div class="ev-label">¿Quién la lleva?</div><div class="ev-opts">';
+  var sp = extra && extra.takenBy === 'papa' ? ' ev-sel' : '';
+  var sm = extra && extra.takenBy === 'mama' ? ' ev-sel' : '';
+  html += '<button class="ev-opt'+sp+'" onclick="evSetTaken(\'papa\')">'+escHtml(papa)+'</button>';
+  html += '<button class="ev-opt'+sm+'" onclick="evSetTaken(\'mama\')">'+escHtml(mama)+'</button>';
+  html += '</div>';
+
+  html += '<div id="ev-other-line" class="ev-other"></div>';
+
+  document.getElementById('ev-modal-body').innerHTML = html;
+  document.getElementById('ev-ov').className = 'overlay show';
+  _evDraft = extra ? { kid: extra.kid, takenBy: extra.takenBy, otherWith: extra.otherWith, note: extra.note } : { kid:'', takenBy:'', otherWith:'', note:'' };
+  updateEvOtherLine();
+}
+
+function getKidNames() {
+  // Si el usuario configuró nombres de hijas, usarlos; si no, genéricos.
+  if (C.panelUi.kidsNames && C.panelUi.kidsNames.length) return C.panelUi.kidsNames;
+  var n = C.panelUi.kidsCount || 2;
+  var arr = [];
+  for (var i = 0; i < n; i++) arr.push('Nena ' + (i+1));
+  return arr;
+}
+
+function evSetKid(k) { _evDraft.kid = k; reRenderEvOpts(); }
+function evSetTaken(t) {
+  _evDraft.takenBy = t;
+  // la otra nena queda con el otro adulto, automáticamente
+  _evDraft.otherWith = t === 'papa' ? 'mama' : 'papa';
+  reRenderEvOpts();
+  updateEvOtherLine();
+}
+
+function reRenderEvOpts() {
+  // re-render manteniendo el modal abierto
+  if (_pendingEvent) {
+    var saved = _evDraft;
+    var ev = _pendingEvent;
+    C.eventExtras[ev.id] = { kid: saved.kid, takenBy: saved.takenBy, otherWith: saved.otherWith, note: saved.note || '' };
+    openEvent(ev.id);
+    _evDraft = saved;
+  }
+}
+
+function updateEvOtherLine() {
+  var line = document.getElementById('ev-other-line');
+  if (!line) return;
+  if (!_evDraft.takenBy || !_evDraft.kid) { line.innerHTML = ''; return; }
+  var kids = getKidNames();
+  var otherKid = '';
+  for (var i = 0; i < kids.length; i++) { if (kids[i] !== _evDraft.kid) { otherKid = kids[i]; break; } }
+  var papa = (C.panelUi.papaName || 'Papá');
+  var mama = (C.panelUi.mamaName || 'Mamá');
+  var lleva = _evDraft.takenBy === 'papa' ? papa : mama;
+  var quedaAdulto = _evDraft.otherWith === 'papa' ? papa : mama;
+  var txt = lleva + ' lleva a ' + _evDraft.kid;
+  if (otherKid) txt += '. ' + otherKid + ' se queda con ' + quedaAdulto + '.';
+  line.innerHTML = txt;
+}
+
+function saveEvent() {
+  if (!_pendingEvent) { closeEvent(); return; }
+  var ev = _pendingEvent;
+  C.eventExtras[ev.id] = {
+    kid: _evDraft.kid, takenBy: _evDraft.takenBy,
+    otherWith: _evDraft.otherWith, note: _evDraft.note || ''
+  };
+  if (USE_API) {
+    callAPI({ clientId: CLIENT_ID, action: 'saveEventExtra', eventId: ev.id,
+      kid: _evDraft.kid, takenBy: _evDraft.takenBy, otherWith: _evDraft.otherWith, note: _evDraft.note || '' }, null);
+  }
+  closeEvent();
+  renderCal();
+  renderEventList();
+  showBanner('Cumpleaños guardado');
+}
+
+function closeEvent() {
+  document.getElementById('ev-ov').className = 'overlay';
+  _pendingEvent = null; _evDraft = null;
+}
+
+function renderEventList() {
+  var box = document.getElementById('event-list');
+  if (!box) return;
+  var evs = (C.events || []).slice().sort(function(a,b){ return (a.date+a.time) < (b.date+b.time) ? -1 : 1; });
+  if (!evs.length) { box.innerHTML = '<div class="empty-state">Sin eventos este mes en el calendario Familia</div>'; return; }
+  var html = '';
+  for (var i = 0; i < evs.length; i++) {
+    var ev = evs[i];
+    var parts = ev.date.split('-');
+    var fecha = parts[2] + '/' + parts[1];
+    var extra = C.eventExtras[ev.id];
+    var sub = '';
+    if (extra && extra.takenBy) {
+      var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
+      sub = '<div class="ev-list-sub">' + (extra.takenBy==='papa'?papa:mama) + ' lleva a ' + escHtml(extra.kid||'') + '</div>';
+    }
+    html += '<div class="ev-list-item" onclick="openEvent(\''+(''+ev.id).replace(/\'/g,'')+'\')">' +
+            '<div class="ev-list-time">'+fecha+(ev.time?'<br>'+ev.time:'')+'</div>' +
+            '<div class="ev-list-main"><div class="ev-list-title">'+escHtml(ev.title)+'</div>'+sub+'</div></div>';
+  }
+  box.innerHTML = html;
+}
+
+function escHtml(s){ return ('' + (s||'')).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s){ return escHtml(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ============================================================
 // IMPRESION PARA MAIA — calendario blanco y negro con tramas
