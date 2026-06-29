@@ -109,7 +109,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .caldaynames { display: -webkit-flex; display: flex; background: #21262d; }
 .caldayname  { -webkit-flex: 1; flex: 1; text-align: center; padding: 8px 2px; font-size: 10px; font-weight: 800; text-transform: uppercase; color: #7d8590; }
 .calweek  { display: -webkit-flex; display: flex; border-top: 1px solid #30363d; }
-.calcell  { -webkit-flex: 1; flex: 1; padding: 4px 2px; text-align: center; min-height: 70px; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; padding-top: 5px; }
+.calcell  { -webkit-flex: 1; flex: 1; min-width: 0; overflow: hidden; padding: 4px 2px; text-align: center; min-height: 70px; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; -webkit-align-items: center; align-items: center; padding-top: 5px; }
 .ccnum    { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
 .ccwho    { font-size: 12px; font-weight: 900; display: inline-block; padding: 2px 5px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; }
 .cchelper { font-size: 9px; font-weight: 900; color: #ff3333; text-transform: uppercase; letter-spacing: 0.3px; }
@@ -2215,7 +2215,4 @@ tick();
 setInterval(tick, 1000);
 loadAll();
 setInterval(loadAll, 120000);
-setInterval(checkRems, 60000);
-</script>
-</body>
-</html>
+setInterval(checkRems, 60
