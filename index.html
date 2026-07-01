@@ -416,6 +416,14 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <button id="pay-bv" class="pay-btn"        onclick="setPay('billetera')">&#128241; Billetera</button>
       <button id="pay-tc" class="pay-btn"        onclick="setPay('tarjeta')">&#128179; Tarjeta</button>
     </div>
+    <!-- Moneda row (solo tarjeta) -->
+    <div id="moneda-row" class="cuotas-row" style="display:none">
+      <select id="e-moneda" onchange="updateCuotaPreview()">
+        <option value="ARS">Pesos (ARS)</option>
+        <option value="USD">Dolares (US$)</option>
+      </select>
+      <span class="cuota-preview" style="font-size:12px;color:#7d8590">moneda de la compra</span>
+    </div>
     <!-- Cuotas row -->
     <div id="cuotas-row" class="cuotas-row" style="display:none">
       <select id="e-cuotas" onchange="updateCuotaPreview()">
@@ -755,6 +763,10 @@ function setPay(method) {
   document.getElementById('pay-bv').className = 'pay-btn' + (method === 'billetera' ? ' act-bv' : '');
   document.getElementById('pay-tc').className = 'pay-btn' + (method === 'tarjeta'   ? ' act-tc' : '');
   document.getElementById('cuotas-row').style.display = method === 'tarjeta' ? '' : 'none';
+  var mr = document.getElementById('moneda-row');
+  if (mr) mr.style.display = method === 'tarjeta' ? '' : 'none';
+  // Fuera de tarjeta, la moneda siempre es ARS
+  if (method !== 'tarjeta') { var ms = document.getElementById('e-moneda'); if (ms) ms.value = 'ARS'; }
   updateCuotaPreview();
 }
 
@@ -763,8 +775,10 @@ function updateCuotaPreview() {
   var cuotas = parseInt(document.getElementById('e-cuotas').value) || 1;
   var el     = document.getElementById('cuota-preview');
   if (currentPayment !== 'tarjeta') { el.innerHTML = ''; return; }
+  var msEl = document.getElementById('e-moneda');
+  var fmt  = (msEl && msEl.value === 'USD') ? fmtUsd : fmtMoney;
   if (cuotas > 1 && amt > 0) {
-    el.innerHTML = cuotas + ' cuotas de ' + fmtMoney(Math.round(amt / cuotas));
+    el.innerHTML = cuotas + ' cuotas de ' + fmt(Math.round(amt / cuotas));
   } else if (amt > 0) {
     el.innerHTML = 'Pago en 1 vez';
   } else { el.innerHTML = ''; }
@@ -923,15 +937,19 @@ function renderAll() {
 // EXPENSE TOTALS
 // ============================================================
 function totalCash() {
-  var t = 0; for (var i = 0; i < C.expenses.length; i++) { if (!C.expenses[i].payment || C.expenses[i].payment === 'efectivo') t += C.expenses[i].amt; } return t;
+  var t = 0; for (var i = 0; i < C.expenses.length; i++) { var e=C.expenses[i]; if (isArs(e) && (!e.payment || e.payment === 'efectivo')) t += e.amt; } return t;
 }
 function totalBilletera() {
-  var t = 0; for (var i = 0; i < C.expenses.length; i++) { if (C.expenses[i].payment === 'billetera') t += C.expenses[i].amt; } return t;
+  var t = 0; for (var i = 0; i < C.expenses.length; i++) { var e=C.expenses[i]; if (isArs(e) && e.payment === 'billetera') t += e.amt; } return t;
 }
 function totalTarjeta() {
-  var t = 0; for (var i = 0; i < C.expenses.length; i++) { if (C.expenses[i].payment === 'tarjeta') t += C.expenses[i].amt; } return t;
+  var t = 0; for (var i = 0; i < C.expenses.length; i++) { var e=C.expenses[i]; if (isArs(e) && e.payment === 'tarjeta') t += e.amt; } return t;
 }
-function totalAll() { var t = 0; for (var i = 0; i < C.expenses.length; i++) t += C.expenses[i].amt; return t; }
+// Total tarjeta en USD (nunca se mezcla con pesos)
+function totalTarjetaUsd() {
+  var t = 0; for (var i = 0; i < C.expenses.length; i++) { var e=C.expenses[i]; if (!isArs(e) && e.payment === 'tarjeta') t += e.amt; } return t;
+}
+function totalAll() { var t = 0; for (var i = 0; i < C.expenses.length; i++) { if (isArs(C.expenses[i])) t += C.expenses[i].amt; } return t; }
 
 // Total que descuenta del presupuesto según el tipo configurado (tarjeta NUNCA descuenta)
 function totalBudgetable() {
@@ -943,11 +961,12 @@ function totalBudgetable() {
 }
 
 // Cuotas futuras de tarjeta de crédito — mes a mes (primer cuota = mes siguiente a la compra)
-function getCreditInstallments() {
+function getCreditInstallments(usd) {
   var months = {};
   for (var i = 0; i < C.expenses.length; i++) {
     var e = C.expenses[i];
     if (e.payment !== 'tarjeta') continue;
+    if (usd ? isArs(e) : !isArs(e)) continue;
     var cuotas = e.cuotas || 1;
     var cuotaAmt = Math.round(e.amt / cuotas);
     var parts = (e.date || '').split('-');
@@ -1408,6 +1427,22 @@ function fmtMoney(n) {
   }
   return c.symbol + r;
 }
+// ── Moneda extranjera (USD) ─────────────────────────────────
+// Los gastos en USD guardan amt en dolares y moneda='USD'.
+// Nunca se suman a los totales en pesos (se muestran aparte).
+function isArs(e)   { return !e || !e.moneda || e.moneda === 'ARS'; }
+function fmtUsd(n) {
+  var s = Math.abs(Math.round(n)).toString(); var r = '', i;
+  for (i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 === 0) r += '.';
+    r += s[i];
+  }
+  return 'US$ ' + r;
+}
+function fmtAmtUsd(n) {
+  if (isLocked()) return '&#9679;&#9679;&#9679;&#9679;&#9679;';
+  return fmtUsd(n);
+}
 function refreshCatLabels() {
   var labels = getCatLabels();
   var sel = document.getElementById('e-cat');
@@ -1549,40 +1584,47 @@ function renderBudget() {
   // Sección digital (solo acceso full)
   if (isFullAccess()) {
     document.getElementById('b-bv').innerHTML  = fmtMoney(totalBilletera());
-    document.getElementById('b-tc').innerHTML  = fmtMoney(totalTarjeta());
+    var tcUsd = totalTarjetaUsd();
+    document.getElementById('b-tc').innerHTML  = fmtMoney(totalTarjeta()) +
+      (tcUsd > 0 ? ' <span style="font-size:13px;color:#8b5cf6">+ ' + fmtUsd(tcUsd) + '</span>' : '');
     document.getElementById('b-all').innerHTML = fmtMoney(totalAll());
   }
 
   // Bloque tarjeta de crédito — cuotas futuras (informativo)
   var tcBlock = document.getElementById('b-tc-installments');
   if (tcBlock && isFullAccess()) {
-    var installs = getCreditInstallments();
-    if (!installs.length) {
+    var installs    = getCreditInstallments(false);
+    var installsUsd = getCreditInstallments(true);
+    if (!installs.length && !installsUsd.length) {
       tcBlock.style.display = 'none';
     } else {
       tcBlock.style.display = '';
-      var tcHtml = '';
-      var tcTotal = 0;
-      for (var ti = 0; ti < installs.length; ti++) {
-        var inst = installs[ti];
-        tcTotal += inst.total;
-        var rowColor = inst.isFuture ? '#e6edf3' : '#7d8590';
-        tcHtml += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #30363d;font-size:13px">';
-        tcHtml += '<span style="color:' + rowColor + '">' + inst.label + '</span>';
-        tcHtml += '<span style="color:#8b5cf6;font-weight:700">' + fmtMoney(inst.total) + '</span>';
-        tcHtml += '</div>';
-      }
-      tcHtml += '<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;font-weight:900">';
-      tcHtml += '<span style="color:#7d8590">Total comprometido</span>';
-      tcHtml += '<span style="color:#8b5cf6">' + fmtMoney(tcTotal) + '</span>';
-      tcHtml += '</div>';
+      // Renderiza una seccion de cuotas con el formateador de moneda dado
+      var renderInstallSection = function(list, fmt, title) {
+        if (!list.length) return '';
+        var h = '', tot = 0;
+        if (title) h += '<div style="font-size:12px;font-weight:800;color:#8b5cf6;margin:8px 0 4px">' + title + '</div>';
+        for (var ti = 0; ti < list.length; ti++) {
+          var inst = list[ti]; tot += inst.total;
+          var rowColor = inst.isFuture ? '#e6edf3' : '#7d8590';
+          h += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #30363d;font-size:13px">';
+          h += '<span style="color:' + rowColor + '">' + inst.label + '</span>';
+          h += '<span style="color:#8b5cf6;font-weight:700">' + fmt(inst.total) + '</span></div>';
+        }
+        h += '<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:13px;font-weight:900">';
+        h += '<span style="color:#7d8590">Total comprometido</span>';
+        h += '<span style="color:#8b5cf6">' + fmt(tot) + '</span></div>';
+        return h;
+      };
+      var tcHtml = renderInstallSection(installs, fmtMoney, installsUsd.length ? 'En pesos' : '');
+      tcHtml    += renderInstallSection(installsUsd, fmtUsd, 'En dolares (US$)');
       document.getElementById('b-tc-list').innerHTML = tcHtml;
     }
   }
 
   // Category breakdown (cash only for ex, all for full)
   var sourceExps = getVisibleExpenses();
-  var cats = {}; for (var i = 0; i < sourceExps.length; i++) { var c = sourceExps[i].cat; cats[c]=(cats[c]||0)+sourceExps[i].amt; }
+  var cats = {}; for (var i = 0; i < sourceExps.length; i++) { if (!isArs(sourceExps[i])) continue; var c = sourceExps[i].cat; cats[c]=(cats[c]||0)+sourceExps[i].amt; }
   var ck = ['comida','servicios','nenas','transporte','salud','otros']; var ch = ''; var hc = false;
   for (var k = 0; k < ck.length; k++) {
     if (cats[ck[k]]) {
@@ -1605,12 +1647,13 @@ function expHtml(e, showDel) {
   var CAT_LABELS = getCatLabels();
   var pay    = e.payment || 'efectivo';
   var cuotas = e.cuotas  || 1;
+  var usd    = !isArs(e);
   var pbadge = '';
   if (pay === 'billetera' && isFullAccess()) pbadge = '<span class="pbadge pb-bv">Digital</span>';
-  if (pay === 'tarjeta'   && isFullAccess()) pbadge = '<span class="pbadge pb-tc">Tarjeta</span>';
+  if (pay === 'tarjeta'   && isFullAccess()) pbadge = '<span class="pbadge pb-tc">'+(usd?'Tarjeta US$':'Tarjeta')+'</span>';
   var cuotaLine = '';
   if (pay === 'tarjeta' && cuotas > 1 && isFullAccess()) {
-    cuotaLine = '<div class="ecuota">' + cuotas + ' cuotas de ' + fmtMoney(Math.round(e.amt/cuotas)) + '</div>';
+    cuotaLine = '<div class="ecuota">' + cuotas + ' cuotas de ' + (usd?fmtUsd(Math.round(e.amt/cuotas)):fmtMoney(Math.round(e.amt/cuotas))) + '</div>';
   }
   var del = showDel && e.id ? '<button class="edel" onclick="delExp(\''+e.id+'\')">&#x2715;</button>' : '';
   return '<div class="eitem">' +
@@ -1618,7 +1661,7 @@ function expHtml(e, showDel) {
     pbadge +
     '<div class="einfo"><div class="edesc">'+(e.desc||'')+'</div>'+cuotaLine+'</div>' +
     '<span class="edate">'+(e.date?e.date.substring(5):'')+'</span>' +
-    '<span class="eamt">-'+fmtAmt(e.amt)+'</span>' + del + '</div>';
+    '<span class="eamt">-'+(usd?fmtAmtUsd(e.amt):fmtAmt(e.amt))+'</span>' + del + '</div>';
 }
 
 function addExp() {
@@ -1627,22 +1670,29 @@ function addExp() {
   var desc   = document.getElementById('e-desc').value;
   var pay    = isExView() ? 'efectivo' : currentPayment;
   var cuotas = (pay === 'tarjeta' && !isExView()) ? (parseInt(document.getElementById('e-cuotas').value)||1) : 1;
+  var msEl   = document.getElementById('e-moneda');
+  var moneda = (pay === 'tarjeta' && !isExView() && msEl && msEl.value === 'USD') ? 'USD' : 'ARS';
   if (!amt || amt <= 0) { alert('Ingresa un monto valido'); return; }
   document.getElementById('e-amt').value = ''; document.getElementById('e-desc').value = '';
-  if (isFullAccess()) { document.getElementById('e-cuotas').value = '1'; updateCuotaPreview(); }
+  if (isFullAccess()) {
+    document.getElementById('e-cuotas').value = '1';
+    if (msEl) msEl.value = 'ARS';
+    updateCuotaPreview();
+  }
   var date = dateKey(new Date());
   if (USE_API) {
-    callAPI({ clientId: CLIENT_ID, action:'addExp', cat:cat, amt:amt, desc:desc, date:date, payment:pay, cuotas:cuotas }, function(err, data) {
+    callAPI({ clientId: CLIENT_ID, action:'addExp', cat:cat, amt:amt, desc:desc, date:date, payment:pay, cuotas:cuotas, moneda:moneda }, function(err, data) {
       var id = (!err && data && data.id) ? data.id : 'l'+Date.now();
-      C.expenses.push({ id:id, cat:cat, amt:amt, desc:desc, date:date, payment:pay, cuotas:cuotas });
+      C.expenses.push({ id:id, cat:cat, amt:amt, desc:desc, date:date, payment:pay, cuotas:cuotas, moneda:moneda });
       toLocal(); renderBudget(); renderHoy();
     });
   } else {
-    C.expenses.push({ id:'l'+Date.now(), cat:cat, amt:amt, desc:desc, date:date, payment:pay, cuotas:cuotas });
+    C.expenses.push({ id:'l'+Date.now(), cat:cat, amt:amt, desc:desc, date:date, payment:pay, cuotas:cuotas, moneda:moneda });
     toLocal(); renderBudget(); renderHoy();
   }
-  var payLabel = pay==='efectivo'?'efectivo':pay==='billetera'?'billetera':'tarjeta'+(cuotas>1?' '+cuotas+'c':'');
-  showBanner('Gasto registrado: '+getCatLabels()[cat]+' '+fmtMoney(amt)+' ('+payLabel+')');
+  var payLabel = pay==='efectivo'?'efectivo':pay==='billetera'?'billetera':'tarjeta'+(cuotas>1?' '+cuotas+'c':'')+(moneda==='USD'?' US$':'');
+  var amtLabel = moneda==='USD' ? fmtUsd(amt) : fmtMoney(amt);
+  showBanner('Gasto registrado: '+getCatLabels()[cat]+' '+amtLabel+' ('+payLabel+')');
 }
 
 function delExp(id) {
