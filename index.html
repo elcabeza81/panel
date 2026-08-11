@@ -225,6 +225,10 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .whobtn.sel-papa { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,.12); }
 .whobtn.sel-mama { border-color: #f778a1; color: #f778a1; background: rgba(247,120,161,.12); }
 .merr { color: #f85149; font-size: 12.5px; font-weight: 700; margin-top: 10px; line-height: 1.4; }
+.daterow { display: -webkit-flex; display: flex; gap: 6px; }
+.dsel { -webkit-flex: 1; flex: 1; min-width: 0; background: #21262d; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 800; padding: 11px 4px; text-align: center; -webkit-appearance: none; appearance: none; }
+.decho { font-size: 12.5px; font-weight: 700; margin-top: 7px; text-align: center; color: #3fb950; }
+.decho.bad { color: #f85149; }
 </style>
 </head>
 <body>
@@ -516,7 +520,12 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <div class="mtitle">Aplicar acuerdo desde un día</div>
     <div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">El ciclo de 14 días se reinicia en la fecha que elijas y rige de ahí en adelante. <b>Nada anterior a esa fecha se toca.</b></div>
     <div style="font-size:12px;color:#7d8590;margin-bottom:5px">Primer día del acuerdo</div>
-    <input type="date" id="apply-date-inp" class="minput" style="font-size:16px">
+    <div class="daterow">
+      <select id="apply-d" class="dsel" onchange="onApplyDateChange()"></select>
+      <select id="apply-m" class="dsel" style="-webkit-flex:1.9;flex:1.9" onchange="onApplyDateChange()"></select>
+      <select id="apply-y" class="dsel" style="-webkit-flex:1.2;flex:1.2" onchange="onApplyDateChange()"></select>
+    </div>
+    <div id="apply-date-echo"></div>
     <div style="font-size:12px;color:#7d8590;margin:12px 0 5px">Ese día arranca con</div>
     <div class="whorow">
       <button type="button" id="apply-who-papa" class="whobtn" onclick="setApplyWho('papa')">Papá</button>
@@ -664,7 +673,7 @@ function clearToken() {
 }
 // Extiende callAPI para inyectar token automáticamente en escrituras
 var WRITE_ACTIONS = {
-  addExp:1, delExp:1, clearMonth:1, setBudget:1, setOverride:1,
+  addExp:1, delExp:1, clearMonth:1, setBudget:1, setBudgetType:1, setOverride:1,
   setOverridesBulk:1, applyAgreement:1,
   resetOverrides:1, addRem:1, delRem:1, saveShopping:1,
   setShareShop:1, setPanelUi:1, logout:1
@@ -1217,13 +1226,67 @@ function openApplyAgreement() {
   pickApplyDate();
 }
 
+// ── Selector de fecha día/mes/año ─────────────────────────────
+// El <input type="date"> nativo se muestra en el idioma del NAVEGADOR
+// (en-US = MM/DD/AAAA), ignorando el lang del documento. Con tres selects
+// y el mes por nombre no hay ambigüedad posible en ningún dispositivo.
+function diasDelMes(y, m) { return new Date(y, m + 1, 0).getDate(); }
+
+function fillApplyDate(ds) {
+  var d = dsToDate(ds);
+  var selY = document.getElementById('apply-y');
+  var selM = document.getElementById('apply-m');
+  var anio = d.getFullYear(), h = '';
+  for (var y = anio; y <= anio + 3; y++) h += '<option value="' + y + '">' + y + '</option>';
+  selY.innerHTML = h; selY.value = '' + anio;
+  h = '';
+  for (var m = 0; m < 12; m++) h += '<option value="' + m + '">' + MONTHS[m] + '</option>';
+  selM.innerHTML = h; selM.value = '' + d.getMonth();
+  fillApplyDays(d.getDate());
+  renderApplyEcho();
+}
+
+function fillApplyDays(diaSel) {
+  var y = parseInt(document.getElementById('apply-y').value, 10);
+  var m = parseInt(document.getElementById('apply-m').value, 10);
+  var tope = diasDelMes(y, m);
+  if (diaSel > tope) diaSel = tope;              // 31 de febrero no existe
+  var h = '';
+  for (var i = 1; i <= tope; i++) h += '<option value="' + i + '">' + i + '</option>';
+  var selD = document.getElementById('apply-d');
+  selD.innerHTML = h; selD.value = '' + diaSel;
+}
+
+// Fecha elegida en formato interno YYYY-MM-DD ('' si algo falta)
+function applyDateValue() {
+  var d = document.getElementById('apply-d'), m = document.getElementById('apply-m'), y = document.getElementById('apply-y');
+  if (!d || !m || !y || d.value === '' || m.value === '' || y.value === '') return '';
+  return y.value + '-' + pad2(parseInt(m.value, 10) + 1) + '-' + pad2(parseInt(d.value, 10));
+}
+
+function onApplyDateChange() {
+  fillApplyDays(parseInt(document.getElementById('apply-d').value, 10) || 1);
+  renderApplyEcho();
+  applyErr('');
+}
+
+// Eco en palabras: que se vea sin lugar a dudas qué fecha quedó elegida
+function renderApplyEcho() {
+  var box = document.getElementById('apply-date-echo');
+  if (!box) return;
+  var ds = applyDateValue();
+  if (!ds) { box.innerHTML = ''; return; }
+  var d = dsToDate(ds);
+  var txt = DAYS[d.getDay()] + ' ' + d.getDate() + ' de ' + MONTHS[d.getMonth()].toLowerCase() + ' de ' + d.getFullYear();
+  var pasado = ds < dateKey(new Date());
+  box.innerHTML = '<div class="decho' + (pasado ? ' bad' : '') + '">' +
+    (pasado ? '&#9888; ' + txt + ' ya pasó' : '&#10003; ' + txt) + '</div>';
+}
+
 function pickApplyDate() {
-  var hoy = dateKey(new Date());
-  var inp = document.getElementById('apply-date-inp');
-  inp.value = hoy;
-  inp.min = hoy;                       // nunca hacia atrás: protege el histórico
   _applyWho = null;
   applyErr('');
+  fillApplyDate(dateKey(new Date()));
   renderApplyWhoBtns();
   document.getElementById('apply-ov').className = 'overlay show';
 }
@@ -1257,8 +1320,7 @@ function computeApply() {
 
 function computeApplyInner() {
   applyErr('');
-  var inp = document.getElementById('apply-date-inp');
-  var fromDate = inp ? ('' + (inp.value || '')).trim() : '';
+  var fromDate = applyDateValue();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
     applyErr('Elegí una fecha válida (día, mes y año completos).');
     return;
