@@ -220,6 +220,10 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .apply-row input { margin-right: 10px; -webkit-transform: scale(1.3); transform: scale(1.3); }
 .apply-date { font-size: 13px; font-weight: 800; min-width: 78px; }
 .apply-detail { font-size: 12px; color: #7d8590; margin-left: 8px; }
+.whorow { display: -webkit-flex; display: flex; gap: 8px; }
+.whobtn { -webkit-flex: 1; flex: 1; background: none; border: 1px solid #30363d; border-radius: 8px; color: #7d8590; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; padding: 10px; cursor: pointer; }
+.whobtn.sel-papa { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,.12); }
+.whobtn.sel-mama { border-color: #f778a1; color: #f778a1; background: rgba(247,120,161,.12); }
 </style>
 </head>
 <body>
@@ -509,8 +513,14 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 <div id="apply-ov" class="overlay">
   <div class="mbox" style="width:320px">
     <div class="mtitle">Aplicar acuerdo desde un día</div>
-    <div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">El acuerdo base se aplicará desde la fecha que elijas, 2 años hacia adelante. Si hay cambios manuales, te dejo decidir cuáles conservar.</div>
+    <div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">El ciclo de 14 días se reinicia en la fecha que elijas y rige de ahí en adelante. <b>Nada anterior a esa fecha se toca.</b></div>
+    <div style="font-size:12px;color:#7d8590;margin-bottom:5px">Primer día del acuerdo</div>
     <input type="date" id="apply-date-inp" class="minput" style="font-size:16px">
+    <div style="font-size:12px;color:#7d8590;margin:12px 0 5px">Ese día arranca con</div>
+    <div class="whorow">
+      <button type="button" id="apply-who-papa" class="whobtn" onclick="setApplyWho('papa')">Papá</button>
+      <button type="button" id="apply-who-mama" class="whobtn" onclick="setApplyWho('mama')">Mamá</button>
+    </div>
     <div class="mbtns" style="margin-top:12px">
       <button class="mbtn-c" onclick="closeApplyDate()">Cancelar</button>
       <button class="mbtn-ok" onclick="computeApply()">Continuar</button>
@@ -653,6 +663,7 @@ function clearToken() {
 // Extiende callAPI para inyectar token automáticamente en escrituras
 var WRITE_ACTIONS = {
   addExp:1, delExp:1, clearMonth:1, setBudget:1, setOverride:1,
+  setOverridesBulk:1, applyAgreement:1,
   resetOverrides:1, addRem:1, delRem:1, saveShopping:1,
   setShareShop:1, setPanelUi:1, logout:1
 };
@@ -674,7 +685,7 @@ var privTimer  = null;
 var currentPayment = 'efectivo';
 
 var C = {
-  expenses: [], budget: 3000000, budgetType: 'efectivo', overrides: {}, reminders: [],
+  expenses: [], budget: 3000000, budgetType: 'efectivo', overrides: {}, cycleAnchor: null, reminders: [],
   shoppingList: [], shareShopping: true,
   events: [], eventExtras: {}, overrideHistory: [],
   panelUi: {
@@ -854,6 +865,7 @@ function loadAll() {
       C.budget     = data.budget     || 3000000;
       C.budgetType = data.budgetType || 'efectivo';
       C.overrides  = data.overrides  || {};
+      C.cycleAnchor = (data.cycleAnchor && data.cycleAnchor.date) ? data.cycleAnchor : null;
       mergeShoppingFromServer(data.shoppingList);
       C.shareShopping = data.shareShopping !== false;
       if (data.panelUi) C.panelUi = mergeUi(data.panelUi);
@@ -909,6 +921,8 @@ function fromLocal() {
   var bt = localStorage.getItem('budgetType'); if (bt) C.budgetType = bt;
   var e = localStorage.getItem(storKey());  if (e) { try { C.expenses  = JSON.parse(e); } catch(x) {} }
   var o = localStorage.getItem('cust_ov'); if (o) { try { C.overrides = JSON.parse(o); } catch(x) {} }
+  var ca = localStorage.getItem('cycle_anchor');
+  if (ca) { try { var _pa = JSON.parse(ca); C.cycleAnchor = (_pa && _pa.date) ? _pa : null; } catch(x) { C.cycleAnchor = null; } }
   var sl = localStorage.getItem('shopping_list'); if (sl) { try { C.shoppingList = JSON.parse(sl); } catch(x) {} }
   var ss = localStorage.getItem('share_shopping'); if (ss !== null) C.shareShopping = ss === 'true';
   var pu = localStorage.getItem('panel_ui'); if (pu) { try { C.panelUi = mergeUi(JSON.parse(pu)); } catch(x) {} }
@@ -920,6 +934,7 @@ function toLocal() {
   localStorage.setItem('budgetType', '' + (C.budgetType || 'efectivo'));
   localStorage.setItem(storKey(), JSON.stringify(C.expenses));
   localStorage.setItem('cust_ov', JSON.stringify(C.overrides));
+  localStorage.setItem('cycle_anchor', C.cycleAnchor ? JSON.stringify(C.cycleAnchor) : '');
   localStorage.setItem('rems',    JSON.stringify(C.reminders));
   localStorage.setItem('shopping_list', JSON.stringify(C.shoppingList || []));
   localStorage.setItem('share_shopping', C.shareShopping ? 'true' : 'false');
@@ -1020,12 +1035,35 @@ function getVisibleExpenses() {
 // ============================================================
 // CUSTODY & HELPER
 // ============================================================
-function getCustody(ds) {
-  if (C.overrides[ds]) return C.overrides[ds];
-  var p = ds.split('-'); var d = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
+function dsToDate(ds) {
+  var p = ds.split('-');
+  return new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
+}
+
+// Patron del acuerdo (sin contar cambios manuales) para una fecha.
+// Si hay un ancla configurada y la fecha es >= al ancla, el ciclo de 14 dias
+// se re-fasea desde ahi; si el acuerdo arranca con papa, el patron se espeja
+// (CYCLE[0] es 'mama'). Antes del ancla, o sin ancla, rige el esquema original.
+function patternWithAnchor(ds, anchor) {
+  var d = dsToDate(ds);
+  if (anchor && anchor.date) {
+    var dd = Math.round((d.getTime() - dsToDate(anchor.date).getTime()) / 86400000);
+    if (dd >= 0) {
+      var slot = CYCLE[((dd % 14) + 14) % 14];
+      if (anchor.who === 'papa') return slot === 'mama' ? 'papa' : 'mama';
+      return slot;
+    }
+  }
   var diff = Math.round((d.getTime() - CYCLE_START) / 86400000);
   if (diff < 0) return null;
   return CYCLE[((diff % 14) + 14) % 14];
+}
+
+function agreementFor(ds) { return patternWithAnchor(ds, C.cycleAnchor); }
+
+function getCustody(ds) {
+  if (C.overrides[ds]) return C.overrides[ds];
+  return agreementFor(ds);
 }
 function getHelperLocation(ds) {
   if (!C.panelUi || !C.panelUi.hasHelper) return '';
@@ -1154,17 +1192,14 @@ function resetCal() {
 }
 function doResetCal() {
   C.overrides = {};
+  C.cycleAnchor = null;   // vuelve al esquema original
   if (USE_API) callAPI({ clientId: CLIENT_ID, action: 'resetOverrides' }, function() { loadAll(); });
   else { toLocal(); renderCal(); renderHoy(); }
 }
 
-// ── Aplicar acuerdo desde un día (patrón base, 2 años adelante) ──
-function basePatternFor(ds) {
-  var p = ds.split('-'); var d = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
-  var diff = Math.round((d.getTime() - CYCLE_START) / 86400000);
-  if (diff < 0) return null;
-  return CYCLE[((diff % 14) + 14) % 14];
-}
+// ── Aplicar acuerdo desde un día (re-ancla el ciclo de 14 días) ──
+// Alias histórico: el patrón vigente para una fecha, sin cambios manuales.
+function basePatternFor(ds) { return agreementFor(ds); }
 
 function openApplyAgreement() {
   // pide PIN si está bloqueado (igual que cambiar un día)
@@ -1182,42 +1217,55 @@ function openApplyAgreement() {
 
 function pickApplyDate() {
   var hoy = dateKey(new Date());
-  document.getElementById('apply-date-inp').value = hoy;
+  var inp = document.getElementById('apply-date-inp');
+  inp.value = hoy;
+  inp.min = hoy;                       // nunca hacia atrás: protege el histórico
+  _applyWho = null;
+  renderApplyWhoBtns();
   document.getElementById('apply-ov').className = 'overlay show';
 }
 function closeApplyDate() { document.getElementById('apply-ov').className = 'overlay'; }
 
+// Selector de con quién arranca el acuerdo
+var _applyWho = null;
+function setApplyWho(w) { _applyWho = w; renderApplyWhoBtns(); }
+function renderApplyWhoBtns() {
+  var papa = (C.panelUi.papaName || 'Papá');
+  var mama = (C.panelUi.mamaName || 'Mamá');
+  var bp = document.getElementById('apply-who-papa');
+  var bm = document.getElementById('apply-who-mama');
+  if (!bp || !bm) return;
+  bp.innerHTML = papa; bm.innerHTML = mama;
+  bp.className = 'whobtn' + (_applyWho === 'papa' ? ' sel-papa' : '');
+  bm.className = 'whobtn' + (_applyWho === 'mama' ? ' sel-mama' : '');
+}
+
 function computeApply() {
   var fromDate = document.getElementById('apply-date-inp').value;
   if (!fromDate) { showBanner('Elegí una fecha'); return; }
+  if (!_applyWho) { showBanner('Elegí con quién arranca el acuerdo'); return; }
+  if (fromDate < dateKey(new Date())) { showBanner('No se puede aplicar hacia atrás'); return; }
   closeApplyDate();
-  // recorrer 2 años desde fromDate
-  var start = new Date(fromDate + 'T12:00:00');
-  var changes = [];      // cambios a aplicar (donde no hay override, o el usuario decide)
-  var conflicts = [];    // overrides existentes a revisar
-  var d = new Date(start.getTime());
-  var endTs = start.getTime() + 730 * 86400000; // ~2 años
+
+  var anchor = { date: fromDate, who: _applyWho };
+  // Barrido hacia adelante: sólo cambios manuales desde la fecha elegida que
+  // ahora chocan con el acuerdo nuevo. Lo anterior a fromDate no se toca.
+  var conflicts = [];
+  var d = dsToDate(fromDate);
+  var endTs = d.getTime() + 730 * 86400000; // ~2 años
   while (d.getTime() <= endTs) {
     var dk = dateKey(d);
-    var base = basePatternFor(dk);
-    if (base) {
-      if (C.overrides[dk]) {
-        // hay override manual: solo es conflicto si difiere del patrón base
-        if (C.overrides[dk] !== base) {
-          conflicts.push({ date: dk, current: C.overrides[dk], base: base, keep: true });
-        }
-      } else {
-        // no hay override; aplicar patrón base como override explícito no es necesario
-        // (el patrón ya rige solo). No agregamos nada.
+    if (C.overrides[dk]) {
+      var base = patternWithAnchor(dk, anchor);
+      if (base && C.overrides[dk] !== base) {
+        conflicts.push({ date: dk, current: C.overrides[dk], base: base, drop: false });
       }
     }
     d.setDate(d.getDate() + 1);
   }
-  _applyChanges = { from: fromDate, conflicts: conflicts };
-  if (conflicts.length === 0) {
-    showBanner('No hay cambios manuales en ese rango. El acuerdo ya rige tal cual.');
-    return;
-  }
+
+  _applyChanges = { from: fromDate, who: _applyWho, anchor: anchor, conflicts: conflicts };
+  if (conflicts.length === 0) { doApplyAgreement(); return; }   // nada que revisar: aplicar ya
   renderApplyReview();
 }
 
@@ -1225,48 +1273,74 @@ function renderApplyReview() {
   var box = document.getElementById('apply-review-body');
   var cf = _applyChanges.conflicts;
   var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
-  var html = '<div style="font-size:13px;color:#7d8590;margin-bottom:12px">Encontré ' + cf.length + ' día(s) con cambios manuales distintos al acuerdo. Destildá los que quieras <b>reemplazar</b> por el acuerdo. Los que dejes tildados se <b>conservan</b> como están.</div>';
+  var nom = function(w) { return w === 'papa' ? papa : mama; };
+  var pf = _applyChanges.from.split('-');
+  var html = '<div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">' +
+    'El acuerdo va a regir desde el <b>' + pf[2] + '/' + pf[1] + '/' + pf[0] + '</b>, arrancando con <b>' + nom(_applyChanges.who) + '</b>.<br>' +
+    'Hay ' + cf.length + ' día(s) con cambios manuales que no coinciden. ' +
+    '<b>Tildá los que quieras reemplazar</b> por el acuerdo; los que dejes sin tildar se conservan como están.</div>' +
+    '<div style="margin-bottom:10px"><button class="mbtn-c" style="font-size:12px;padding:4px 10px" onclick="toggleAllApply(true)">Tildar todos</button> ' +
+    '<button class="mbtn-c" style="font-size:12px;padding:4px 10px" onclick="toggleAllApply(false)">Ninguno</button></div>';
   for (var i = 0; i < cf.length; i++) {
     var c = cf[i];
     var parts = c.date.split('-');
     var fecha = parts[2] + '/' + parts[1] + '/' + parts[0];
-    var curN = c.current === 'papa' ? papa : mama;
-    var baseN = c.base === 'papa' ? papa : mama;
-    html += '<label class="apply-row"><input type="checkbox" ' + (c.keep?'checked':'') + ' onchange="_applyChanges.conflicts['+i+'].keep=this.checked">' +
+    html += '<label class="apply-row"><input type="checkbox" class="apply-cb" ' + (c.drop?'checked':'') + ' onchange="_applyChanges.conflicts['+i+'].drop=this.checked">' +
       '<span class="apply-date">'+fecha+'</span>' +
-      '<span class="apply-detail">manual: <b>'+curN+'</b> · acuerdo: '+baseN+'</span></label>';
+      '<span class="apply-detail">manual: <b>'+nom(c.current)+'</b> · acuerdo: '+nom(c.base)+'</span></label>';
   }
-  document.getElementById('apply-review-ov').className = 'overlay show';
   box.innerHTML = html;
+  document.getElementById('apply-review-ov').className = 'overlay show';
+}
+function toggleAllApply(v) {
+  var cf = _applyChanges.conflicts;
+  for (var i = 0; i < cf.length; i++) cf[i].drop = v;
+  var cbs = document.getElementsByClassName('apply-cb');
+  for (var j = 0; j < cbs.length; j++) cbs[j].checked = v;
 }
 function closeApplyReview() { document.getElementById('apply-review-ov').className = 'overlay'; }
 
-function confirmApply() {
-  var cf = _applyChanges.conflicts;
-  var toReplace = [];
-  for (var i = 0; i < cf.length; i++) {
-    if (!cf[i].keep) {
-      // reemplazar = volver al patrón base: quitar el override (borrarlo)
-      toReplace.push({ date: cf[i].date, who: cf[i].base });
-    }
+function confirmApply() { closeApplyReview(); doApplyAgreement(); }
+
+function doApplyAgreement() {
+  var a = _applyChanges;
+  var drop = [];
+  for (var i = 0; i < a.conflicts.length; i++) {
+    if (a.conflicts[i].drop) drop.push(a.conflicts[i].date);
   }
-  closeApplyReview();
-  if (!toReplace.length) { showBanner('No se reemplazó ningún día. Todo queda como estaba.'); return; }
-  // aplicar local
-  for (var j = 0; j < toReplace.length; j++) {
-    // si el patrón base coincide, podemos borrar el override; pero para registrar
-    // historial y mantener consistencia, lo seteamos explícito al valor base.
-    C.overrides[toReplace[j].date] = toReplace[j].who;
-  }
+
+  // Aplicar local primero (la UI responde al toque, aunque la red falle)
+  C.cycleAnchor = { date: a.from, who: a.who };
+  for (var j = 0; j < drop.length; j++) delete C.overrides[drop[j]];
   toLocal(); renderCal(); renderHoy();
-  if (USE_API) {
-    callAPI({ clientId: CLIENT_ID, action: 'setOverridesBulk', changes: JSON.stringify(toReplace) }, function(err) {
-      if (err) showBanner('Aplicado localmente; se subirá al reconectar.');
-      else { showBanner(toReplace.length + ' día(s) ajustados al acuerdo'); loadAll(); }
+
+  var resumen = 'Acuerdo aplicado desde ' + a.from.split('-').reverse().join('/') +
+                (drop.length ? ' · ' + drop.length + ' cambio(s) manual(es) reemplazado(s)' : '');
+
+  if (!USE_API) { showBanner(resumen); return; }
+
+  // Enviar por tandas: la API es JSONP (GET) y una lista larga revienta la URL
+  var CHUNK = 120;
+  var lotes = [];
+  if (!drop.length) lotes.push([]);
+  else for (var k = 0; k < drop.length; k += CHUNK) lotes.push(drop.slice(k, k + CHUNK));
+
+  var idx = 0;
+  function enviar() {
+    callAPI({
+      clientId: CLIENT_ID, action: 'applyAgreement',
+      from: a.from, who: a.who,
+      drop: JSON.stringify(lotes[idx]),
+      nolog: idx === 0 ? '0' : '1'
+    }, function(err) {
+      if (err) { showBanner('Aplicado localmente; se subirá al reconectar.'); return; }
+      idx++;
+      if (idx < lotes.length) { enviar(); return; }
+      showBanner(resumen);
+      loadAll();
     });
-  } else {
-    showBanner(toReplace.length + ' día(s) ajustados al acuerdo');
   }
+  enviar();
 }
 
 // ── Historial de cambios de custodia ─────────────────────────
@@ -1282,6 +1356,20 @@ function renderHistory() {
     var e = h[i];
     if (e.date === '*') {
       html += '<div class="hist-item"><div class="hist-main">Calendario restaurado al esquema original</div><div class="hist-meta">'+ (e.by==='ex'?mama:papa) +' · '+e.at+'</div></div>';
+      continue;
+    }
+    if (e.date === '#agreement') {
+      var fp = ('' + (e.from || '')).split('-');
+      var fdesde = fp.length === 3 ? fp[2] + '/' + fp[1] + '/' + fp[0] : (e.from || '');
+      var arranca = e.who === 'papa' ? papa : mama;
+      var reemp = e.removed ? ' · ' + e.removed + ' cambio(s) manual(es) reemplazado(s)' : '';
+      html += '<div class="hist-item"><div class="hist-main">Acuerdo aplicado desde ' + fdesde + ' (arranca ' + arranca + ')' + reemp + '</div>' +
+              '<div class="hist-meta">'+ (e.by==='ex'?mama:papa) +' · '+e.at+'</div></div>';
+      continue;
+    }
+    if (e.date === '#bulk') {
+      html += '<div class="hist-item"><div class="hist-main">' + e.who + ' día(s) ajustados en bloque</div>' +
+              '<div class="hist-meta">'+ (e.by==='ex'?mama:papa) +' · '+e.at+'</div></div>';
       continue;
     }
     var parts = e.date.split('-');
