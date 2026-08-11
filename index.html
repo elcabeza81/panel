@@ -139,7 +139,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .notif-btn { background: #3fb950; color: #0d1117; border: none; border-radius: 8px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 900; padding: 10px 20px; cursor: pointer; margin-top: 8px; }
 .auto-r { padding: 8px 0; border-bottom: 1px solid #30363d; } .auto-r:last-child { border-bottom: none; }
 
-.banner { position: fixed; top: 68px; left: 50%; z-index: 9999; -webkit-transform: translateX(-50%); transform: translateX(-50%); background: #e3b341; color: #0d1117; padding: 12px 22px; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; -webkit-box-shadow: 0 4px 20px rgba(0,0,0,0.5); box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-width: 85%; text-align: center; }
+.banner { position: fixed; top: 68px; left: 50%; z-index: 10050; -webkit-transform: translateX(-50%); transform: translateX(-50%); background: #e3b341; color: #0d1117; padding: 12px 22px; border-radius: 12px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; -webkit-box-shadow: 0 4px 20px rgba(0,0,0,0.5); box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-width: 85%; text-align: center; }
 
 .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 10000; -webkit-align-items: center; align-items: center; -webkit-justify-content: center; justify-content: center; }
 .overlay.show { display: -webkit-flex; display: flex; }
@@ -224,6 +224,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .whobtn { -webkit-flex: 1; flex: 1; background: none; border: 1px solid #30363d; border-radius: 8px; color: #7d8590; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 800; padding: 10px; cursor: pointer; }
 .whobtn.sel-papa { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,.12); }
 .whobtn.sel-mama { border-color: #f778a1; color: #f778a1; background: rgba(247,120,161,.12); }
+.merr { color: #f85149; font-size: 12.5px; font-weight: 700; margin-top: 10px; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -521,6 +522,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <button type="button" id="apply-who-papa" class="whobtn" onclick="setApplyWho('papa')">Papá</button>
       <button type="button" id="apply-who-mama" class="whobtn" onclick="setApplyWho('mama')">Mamá</button>
     </div>
+    <div id="apply-err"></div>
     <div class="mbtns" style="margin-top:12px">
       <button class="mbtn-c" onclick="closeApplyDate()">Cancelar</button>
       <button class="mbtn-ok" onclick="computeApply()">Continuar</button>
@@ -1221,6 +1223,7 @@ function pickApplyDate() {
   inp.value = hoy;
   inp.min = hoy;                       // nunca hacia atrás: protege el histórico
   _applyWho = null;
+  applyErr('');
   renderApplyWhoBtns();
   document.getElementById('apply-ov').className = 'overlay show';
 }
@@ -1240,11 +1243,32 @@ function renderApplyWhoBtns() {
   bm.className = 'whobtn' + (_applyWho === 'mama' ? ' sel-mama' : '');
 }
 
+// Error visible DENTRO del modal: el banner queda tapado por el overlay.
+function applyErr(msg) {
+  var e = document.getElementById('apply-err');
+  if (e) e.innerHTML = msg ? '<div class="merr">' + msg + '</div>' : '';
+  if (msg) showBanner(msg);
+}
+
 function computeApply() {
-  var fromDate = document.getElementById('apply-date-inp').value;
-  if (!fromDate) { showBanner('Elegí una fecha'); return; }
-  if (!_applyWho) { showBanner('Elegí con quién arranca el acuerdo'); return; }
-  if (fromDate < dateKey(new Date())) { showBanner('No se puede aplicar hacia atrás'); return; }
+  try { computeApplyInner(); }
+  catch (ex) { applyErr('Error inesperado: ' + (ex && ex.message ? ex.message : ex)); }
+}
+
+function computeApplyInner() {
+  applyErr('');
+  var inp = document.getElementById('apply-date-inp');
+  var fromDate = inp ? ('' + (inp.value || '')).trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromDate)) {
+    applyErr('Elegí una fecha válida (día, mes y año completos).');
+    return;
+  }
+  if (!_applyWho) { applyErr('Elegí con quién arranca el acuerdo: tocá ' + (C.panelUi.papaName || 'Papá') + ' o ' + (C.panelUi.mamaName || 'Mamá') + '.'); return; }
+  var hoy = dateKey(new Date());
+  if (fromDate < hoy) {
+    applyErr('No se puede aplicar hacia atrás. La fecha más temprana es hoy (' + hoy.split('-').reverse().join('/') + ').');
+    return;
+  }
   closeApplyDate();
 
   var anchor = { date: fromDate, who: _applyWho };
