@@ -93,6 +93,7 @@ function rutear(ss, p, act, clientId, mes) {
   // calendario, configuracion), no la carga de gastos ni la lista.
   if (act === 'getAll')         return getAll(ss, clientId, mes);
   if (act === 'validatePin')    return validatePin(ss, clientId, p.pin || '');
+  if (act === 'changePin')      return changePin(ss, clientId, p.actual || '', p.nuevo || '');
   if (act === 'debug')          return debug(ss, clientId, mes);
   if (act === 'addExp')         return addExp(ss, clientId, p);
   if (act === 'delExp')         return delExp(ss, clientId, p.id);
@@ -711,6 +712,30 @@ function validatePin(ss, clientId, pin) {
   return { ok: true, mode: mode, token: session.token, expiresAt: session.expiresAt };
 }
 
+// changePin: el DUEÑO cambia su PIN desde el panel (pide el PIN actual).
+// El PIN nuevo sólo viaja al servidor, que guarda el hash: nunca queda en el
+// código ni en el repo. El PIN del otro progenitor no se toca.
+function changePin(ss, clientId, actual, nuevo) {
+  actual = '' + actual; nuevo = '' + nuevo;
+  if (!/^\d{4}$/.test(nuevo)) return { error: 'el PIN nuevo tiene que tener 4 dígitos' };
+  var cfg    = readConfig(ss, clientId);
+  var ownerH = '' + (cfg.pin_owner || '');
+  if (!ownerH || hashPin(actual, 'owner') !== ownerH) return { error: 'PIN actual incorrecto' };
+  if (nuevo === actual) return { error: 'el PIN nuevo es igual al actual' };
+  if (cfg.pin_ex && hashPin(nuevo, 'ex') === '' + cfg.pin_ex) return { error: 'ese PIN es el del otro progenitor: elegí otro' };
+  var h = hashPin(nuevo, 'owner');
+  // Forzar texto si el hash pudiera leerse como número o fecha en Sheets
+  setConf(ss, clientId, 'pin_owner', /^[0-9eE.+\-\/]+$/.test(h) ? "'" + h : h);
+  // Cerrar las sesiones de dueño abiertas con el PIN viejo
+  var m = leerSesiones(cfg), cerradas = 0;
+  for (var k in m) { if (m.hasOwnProperty(k) && m[k] && m[k].mode === 'full') { delete m[k]; cerradas++; } }
+  setConf(ss, clientId, 'session_tokens', JSON.stringify(m));
+  if (cfg.session_token) {
+    try { var d = JSON.parse(cfg.session_token); if (d && d.mode === 'full') setConf(ss, clientId, 'session_token', '{}'); } catch (e) {}
+  }
+  return { ok: true, sesionesCerradas: cerradas };
+}
+
 // ============================================================
 // REGISTRO DE CLIENTES
 // ============================================================
@@ -786,49 +811,37 @@ function runSetup() {
 
   var cfg = readConfig(ss, clientId);
   if (!cfg.pin_owner) {
-    setConf(ss, clientId, 'pin_owner', hashPin('7746', 'owner'));
-    setConf(ss, clientId, 'pin_ex',    hashPin('1056', 'ex'));
-    Logger.log('PINs inicializados');
+    // Instalación nueva: completá los PIN iniciales SÓLO en el editor (nunca en
+    // el repo, que es público), corré runSetup y volvé a dejarlos vacíos.
+    // Después, el dueño cambia el suyo desde el panel (Cambiar mi PIN).
+    var PIN_DUENO_INICIAL = '', PIN_EX_INICIAL = '';
+    if (PIN_DUENO_INICIAL && PIN_EX_INICIAL) {
+      setConf(ss, clientId, 'pin_owner', hashPin(PIN_DUENO_INICIAL, 'owner'));
+      setConf(ss, clientId, 'pin_ex',    hashPin(PIN_EX_INICIAL, 'ex'));
+      Logger.log('PINs inicializados');
+    } else {
+      Logger.log('Faltan los PIN iniciales: completalos en runSetup (sólo en el editor).');
+    }
   }
 
   SpreadsheetApp.flush();
   Logger.log('Setup OK — claves: ' + Object.keys(readConfig(ss, clientId)).join(', '));
 }
 
-function reconstruirConfig() {
-  var ss = SpreadsheetApp.openById(SS_ID);
-  var cs = ss.getSheetByName('config');
-  if (!cs) cs = ss.insertSheet('config');
-  cs.clearContents();
+// (19/10/2026) Se eliminó reconstruirConfig(): borraba toda la hoja 'config' y
+// la reescribía con datos de junio, incluido el PIN de dueño viejo. Si hay que
+// recuperar config, usar el historial de versiones del Sheet.
 
-  var rows = [
-    ['juanma', 'budget',         '848480'],
-    ['juanma', 'overrides',      '{"2026-06-17":"mama","2026-06-18":"mama","2026-05-25":"mama","2026-05-27":"papa","2026-06-15":"papa","2026-06-16":"papa","2026-06-21":"papa"}'],
-    ['juanma', 'reminders',      '[]'],
-    ['juanma', 'pin_owner',      '1qj9jun'],
-    ['juanma', 'pin_ex',         '1p8rzop'],
-    ['juanma', 'panel_ui',       '{"papaName":"Juan","mamaName":"Mariana","kidsTemplate":"l@s chic@s","kidsTemplateSingular":"la nena","kidsCount":2,"country":"AR","helperName":"Maria","ownerHouse":"Prados","exHouse":"Aires","hasHelper":true}'],
-    ['juanma', 'share_shopping', 'false'],
-    ['juanma', 'shopping_list',  '[{"id":"li1779084202750","name":"Almohaditas Rellenas","done":false},{"id":"li1779084188878","name":"Mani Tostado sin Sal","done":false}]']
-  ];
-
-  for (var i = 0; i < rows.length; i++) cs.appendRow(rows[i]);
-  SpreadsheetApp.flush();
-
-  var data = cs.getDataRange().getValues();
-  Logger.log('Filas: ' + data.length);
-  for (var j = 0; j < data.length; j++) {
-    Logger.log('Fila '+(j+1)+': ['+data[j][0]+'] | ['+data[j][1]+'] | ['+data[j][2]+']');
-  }
-}
-
-function runTestToken() {
+// Prueba manual de tokens: llamala desde otra función pasando un PIN válido,
+// p. ej. function probar() { runTestToken('····'); } — y borrala después.
+function runTestToken(pin) {
   var ss  = SpreadsheetApp.openById(SS_ID);
   Logger.log('=== TEST TOKENS ===');
+  if (!pin) { Logger.log('Falta el PIN: ver comentario de runTestToken.'); return; }
 
   // Simular validatePin con PIN correcto
-  var res = validatePin(ss, 'juanma', '7746');
-  Logger.log('validatePin 7746: ' + JSON.stringify(res));
+  var res = validatePin(ss, 'juanma', '' + pin);
+  Logger.log('validatePin: ' + JSON.stringify(res));
 
   if (res.ok && res.token) {
     // Verificar token

@@ -631,6 +631,25 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <select id="cfg-country"></select>
     </div>
     <button class="addbtn" style="width:100%" onclick="savePanelUi()">Guardar personalizacion</button>
+
+    <div class="stitle" style="margin-top:18px">Cambiar mi PIN</div>
+    <div style="display:-webkit-flex;display:flex;margin-bottom:6px">
+      <div class="cfg-row" style="-webkit-flex:1;flex:1;margin-right:8px;margin-bottom:0">
+        <label>PIN actual</label>
+        <input type="password" id="pin-act" inputmode="numeric" maxlength="4" autocomplete="off">
+      </div>
+      <div class="cfg-row" style="-webkit-flex:1;flex:1;margin-right:8px;margin-bottom:0">
+        <label>PIN nuevo</label>
+        <input type="password" id="pin-new" inputmode="numeric" maxlength="4" autocomplete="new-password">
+      </div>
+      <div class="cfg-row" style="-webkit-flex:1;flex:1;margin-bottom:0">
+        <label>Repetir</label>
+        <input type="password" id="pin-new2" inputmode="numeric" maxlength="4" autocomplete="new-password">
+      </div>
+    </div>
+    <div id="pin-chg-err" style="font-size:12px;color:#f85149;font-weight:700;min-height:16px;margin-bottom:6px"></div>
+    <button class="addbtn" style="width:100%" onclick="changeMyPin()">Cambiar mi PIN</button>
+    <div style="font-size:11px;color:#7d8590;margin-top:6px">Cambia sólo tu PIN; el del otro progenitor queda igual. Al cambiarlo se cierran tus sesiones abiertas.</div>
   </div>
   <div class="card">
     <div class="stitle">Alertas automaticas</div>
@@ -694,7 +713,8 @@ function authHash(pin, role) {
   return (h >>> 0).toString(36);
 }
 function _d(a) { var s = '', i; for (i = 0; i < a.length; i++) s += String.fromCharCode(a[i] ^ 42); return s; }
-var PIN_HASH_OWNER = authHash(_d([29, 29, 30, 28]), 'owner');
+// El PIN del dueño ya NO vive en este archivo (el repo es público): se valida
+// sólo en el servidor y se cambia desde Ajustes → "Cambiar mi PIN".
 var PIN_HASH_EX    = authHash(_d([27, 26, 31, 28]), 'ex');
 
 // viewMode: 'locked' | 'full' | 'ex'
@@ -1282,7 +1302,7 @@ function confirmCalChange() {
         applyViewMode(data.mode);
         doChange();
       } else {
-        var local = pinOkLocal(v);
+        var local = pinRespaldo(data, v);
         if (local) { applyViewMode(local); doChange(); }
         else {
           document.getElementById('cal-pin-err').innerHTML = 'PIN incorrecto';
@@ -1305,7 +1325,7 @@ function resetCal() {
         applyViewMode(data.mode);
         doResetCal();
       } else {
-        var local = pinOkLocal(v);
+        var local = pinRespaldo(data, v);
         if (local) { applyViewMode(local); doResetCal(); }
         else showBanner('PIN incorrecto');
       }
@@ -1332,7 +1352,7 @@ function openApplyAgreement() {
     if (!v) return;
     callAPI({ clientId: CLIENT_ID, action: 'validatePin', pin: v }, function(err, data) {
       if (!err && data && data.mode) { if (data.token) setToken(data.token); applyViewMode(data.mode); pickApplyDate(); }
-      else { var local = pinOkLocal(v); if (local) { applyViewMode(local); pickApplyDate(); } else showBanner('PIN incorrecto'); }
+      else { var local = pinRespaldo(data, v); if (local) { applyViewMode(local); pickApplyDate(); } else showBanner('PIN incorrecto'); }
     });
     return;
   }
@@ -1627,11 +1647,13 @@ function applyViewMode(mode) {
   renderOutbox();
   pumpOutbox();             // si había cambios pendientes, se suben ahora
 }
+// Respaldo sin conexión (sólo vista, sin token): únicamente si el servidor NO
+// respondió. Si respondió "PIN incorrecto", eso manda.
 function pinOkLocal(v) {
-  if (authHash(v, 'owner') === PIN_HASH_OWNER) return 'full';
   if (authHash(v, 'ex') === PIN_HASH_EX) return 'ex';
   return null;
 }
+function pinRespaldo(data, v) { return data ? null : pinOkLocal(v); }
 function submitPin() {
   var v = document.getElementById('pin-inp').value;
   if (!/^\d{4}$/.test(v)) {
@@ -1645,7 +1667,7 @@ function submitPin() {
         applyViewMode(data.mode);
         return;
       }
-      var local = pinOkLocal(v);
+      var local = pinRespaldo(data, v);
       if (local) applyViewMode(local);
       else {
         document.getElementById('pin-err').innerHTML = (data && data.error) ? data.error : 'PIN incorrecto';
@@ -2509,6 +2531,33 @@ function applyUiForm() {
   el = document.getElementById('cfg-kids-count'); if (el) el.value = '' + (p.kidsCount || 2);
   el = document.getElementById('cfg-country'); if (el) el.value = p.country || 'AR';
 }
+// Cambiar el PIN del dueño: viaja sólo al servidor, que guarda el hash.
+function changeMyPin() {
+  var act = (document.getElementById('pin-act').value || '').trim();
+  var n1  = (document.getElementById('pin-new').value || '').trim();
+  var n2  = (document.getElementById('pin-new2').value || '').trim();
+  var errEl = document.getElementById('pin-chg-err');
+  errEl.innerHTML = '';
+  if (!/^\d{4}$/.test(act) || !/^\d{4}$/.test(n1)) { errEl.innerHTML = 'Los PIN son de 4 dígitos.'; return; }
+  if (n1 !== n2)  { errEl.innerHTML = 'El PIN nuevo y la repetición no coinciden.'; return; }
+  if (n1 === act) { errEl.innerHTML = 'El PIN nuevo es igual al actual.'; return; }
+  if (!USE_API)   { errEl.innerHTML = 'Sin servidor no se puede cambiar el PIN.'; return; }
+  callAPI({ clientId: CLIENT_ID, action: 'changePin', actual: act, nuevo: n1 }, function(err, data) {
+    if (!err && data && data.ok) {
+      document.getElementById('pin-act').value = '';
+      document.getElementById('pin-new').value = '';
+      document.getElementById('pin-new2').value = '';
+      // El servidor cerró las sesiones abiertas con el PIN viejo
+      clearToken();
+      if (privTimer) clearTimeout(privTimer);
+      viewMode = 'locked'; updLock(); renderAll(); updateAccessUI(); updateNavAccess(); renderOutbox();
+      showBanner('PIN cambiado ✓ Entrá con el nuevo.');
+      return;
+    }
+    errEl.innerHTML = (data && data.error) ? escHtml(data.error) : 'Sin conexión: probá de nuevo.';
+  }, 30000);
+}
+
 function savePanelUi() {
   if (!isFullAccess()) { openPin(); return; }
   C.panelUi.papaName = (document.getElementById('cfg-papa').value || 'Papa').trim();
