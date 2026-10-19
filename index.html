@@ -216,6 +216,12 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .hist-main { font-size: 13px; }
 .hist-meta { font-size: 11px; color: #7d8590; margin-top: 1px; }
 .hist-bulk { font-size: 9px; background: rgba(63,185,80,0.15); color: #3fb950; padding: 1px 5px; border-radius: 4px; font-weight: 800; text-transform: uppercase; }
+.hist-count { font-size: 11px; color: #7d8590; padding-bottom: 4px; border-bottom: 1px solid #30363d; }
+.hist-prev { font-size: 11px; color: #7d8590; }
+.hist-more { width: 100%; margin-top: 8px; }
+.outbox-bar { margin: 0 0 8px 0; padding: 8px 12px; border-radius: 10px; background: rgba(227,179,65,0.12); border: 1px solid rgba(227,179,65,0.45); color: #e3b341; font-size: 13px; font-weight: 800; }
+.outbox-bar.warn { background: rgba(248,81,73,0.12); border-color: rgba(248,81,73,0.5); color: #f85149; }
+.ob-btn { margin-left: 8px; background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 8px; padding: 3px 10px; font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer; }
 .apply-row { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 8px 0; border-bottom: 1px solid #30363d; cursor: pointer; }
 .apply-row input { margin-right: 10px; -webkit-transform: scale(1.3); transform: scale(1.3); }
 .apply-date { font-size: 13px; font-weight: 800; min-width: 78px; }
@@ -466,6 +472,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
     <div class="caltitle" id="cal-title">Mayo 2026</div>
     <button class="calnav" onclick="calNext()">&#8594;</button>
   </div>
+  <div id="outbox-bar" class="outbox-bar" style="display:none"></div>
   <div class="calgrid">
     <div class="caldaynames">
       <div class="caldayname">Lun</div><div class="caldayname">Mar</div><div class="caldayname">Mie</div>
@@ -809,11 +816,11 @@ function updateCuotaPreview() {
 // ============================================================
 // API — JSONP
 // ============================================================
-function callAPI(params, cb) {
+function callAPI(params, cb, timeoutMs) {
   if (!USE_API) { if (cb) cb(null, null); return; }
   setSyncDot('busy');
-  var n = 'apicb' + Date.now();
-  var to = setTimeout(function() { delete window[n]; setSyncDot('err'); if (cb) cb(new Error('timeout')); }, 15000);
+  var n = 'apicb' + Date.now() + Math.floor(Math.random() * 1000);
+  var to = setTimeout(function() { delete window[n]; setSyncDot('err'); if (cb) cb(new Error('timeout')); }, timeoutMs || 15000);
   window[n] = function(data) {
     clearTimeout(to); delete window[n];
     setSyncDot(data && !data.error ? 'ok' : 'err');
@@ -870,13 +877,20 @@ function loadAll() {
   if (!USE_API) { fromLocal(); renderAll(); updateNavAccess(); return; }
   if (!dataLoaded) { var so = document.getElementById('sync-overlay'); if (so) so.style.display = 'flex'; }
   var now = new Date(); var month = now.getFullYear() + '-' + pad2(now.getMonth()+1);
+  var pedidoEn = Date.now();
   callAPI({ clientId: CLIENT_ID, action: 'getAll', month: month }, function(err, data) {
     if (!err && data && data.expenses !== undefined) {
+      // Si mientras viajaba esta lectura se confirmó un cambio del calendario,
+      // la foto del servidor es vieja para el calendario: no la aplico (la
+      // próxima lectura, que se dispara al vaciar la cola, la trae fresca).
+      var calViejo = pedidoEn < _obLastOkAt;
       C.expenses  = data.expenses  || [];
       C.budget     = data.budget     || 3000000;
       C.budgetType = data.budgetType || 'efectivo';
-      C.overrides  = data.overrides  || {};
-      C.cycleAnchor = (data.cycleAnchor && data.cycleAnchor.date) ? data.cycleAnchor : null;
+      if (!calViejo) {
+        C.overrides  = data.overrides  || {};
+        C.cycleAnchor = (data.cycleAnchor && data.cycleAnchor.date) ? data.cycleAnchor : null;
+      }
       mergeShoppingFromServer(data.shoppingList);
       C.shareShopping = data.shareShopping !== false;
       if (data.panelUi) C.panelUi = mergeUi(data.panelUi);
@@ -887,10 +901,14 @@ function loadAll() {
         }
       }
       C.reminders = ar;
-      C.overrideHistory = data.overrideHistory || [];
+      if (!calViejo) C.overrideHistory = data.overrideHistory || [];
       C.eventExtras = data.eventExtras || {};
+      obApplyPending();          // lo que todavía no subió se sigue viendo
       toLocal();
-    } else { fromLocal(); }
+      var hw = document.getElementById('history-wrap');
+      if (hw && hw.style.display === 'block') renderHistory();
+    } else { fromLocal(); obApplyPending(); }
+    renderOutbox();
     dataLoaded = true;
     var so2 = document.getElementById('sync-overlay'); if (so2) so2.style.display = 'none';
     renderAll();
@@ -921,6 +939,109 @@ function loadEvents() {
     renderEventList();
   });
 }
+// ============================================================
+// COLA DE CAMBIOS DEL CALENDARIO (outbox)
+// ============================================================
+// Cada cambio se guarda primero en este dispositivo y se sube de a uno, en
+// orden (el servidor descarta reintentos repetidos por opId). Si no hay
+// conexión o se venció la sesión, queda pendiente y se muestra arriba del
+// calendario: nada se pierde en silencio ni "vuelve atrás" al refrescar.
+var OUTBOX_KEY = 'cal_outbox_v1';
+var _obSending = false;
+var _obTimer = null;
+var _obReload = false;
+var _obLastOkAt = 0;
+
+function obLoad() {
+  try { var q = JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); return (q instanceof Array) ? q : []; }
+  catch (e) { return []; }
+}
+function obSave(q) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q)); } catch (e) {} }
+function obDrop(id) {
+  var q = obLoad();
+  for (var i = 0; i < q.length; i++) { if (q[i].id === id) { q.splice(i, 1); break; } }
+  obSave(q);
+}
+function obPush(action, params) {
+  var q = obLoad();
+  if (action === 'resetOverrides') {
+    q = q.filter(function(op) { return op.action !== 'setOverride' && op.action !== 'applyAgreement'; });
+  }
+  q.push({ id: 'o' + Date.now().toString(36) + Math.random().toString(36).substring(2, 8), action: action, p: params || {}, at: Date.now() });
+  obSave(q);
+  renderOutbox();
+  pumpOutbox();
+}
+// Re-aplica lo pendiente encima de lo que trajo el servidor
+function obApplyPending() {
+  var q = obLoad();
+  for (var i = 0; i < q.length; i++) {
+    var op = q[i], p = op.p || {};
+    if (op.action === 'setOverride' && p.date && p.who) {
+      C.overrides[p.date] = p.who;
+    } else if (op.action === 'applyAgreement' && p.from) {
+      C.cycleAnchor = { date: p.from, who: p.who };
+      try { var d = JSON.parse(p.drop || '[]'); for (var j = 0; j < d.length; j++) delete C.overrides[d[j]]; } catch (e) {}
+    } else if (op.action === 'resetOverrides') {
+      C.overrides = {}; C.cycleAnchor = null;
+    }
+  }
+}
+function pumpOutbox() {
+  if (!USE_API || _obSending) return;
+  if (_obTimer) { clearTimeout(_obTimer); _obTimer = null; }
+  var q = obLoad();
+  if (!q.length) {
+    renderOutbox();
+    if (_obReload) { _obReload = false; loadAll(); }   // traer historial y estado confirmados
+    return;
+  }
+  if (!getToken()) { renderOutbox(); return; }        // falta PIN: queda pendiente y a la vista
+  _obSending = true;
+  renderOutbox();
+  var op = q[0];
+  var params = { clientId: CLIENT_ID, action: op.action, opId: op.id };
+  for (var k in op.p) { if (op.p.hasOwnProperty(k)) params[k] = op.p[k]; }
+  callAPI(params, function(err, data) {
+    _obSending = false;
+    if (!err) {
+      obDrop(op.id); _obLastOkAt = Date.now(); _obReload = true;
+      pumpOutbox();
+      return;
+    }
+    if (data && data.code === 401) {                  // sesión vencida o cerrada
+      clearToken();
+      if (viewMode !== 'locked') { viewMode = 'locked'; updLock(); renderAll(); updateAccessUI(); updateNavAccess(); }
+      renderOutbox();
+      showBanner('Se venció la sesión: ingresá el PIN para subir los cambios pendientes.');
+      return;
+    }
+    if (data && data.error && !data.busy) {           // error definitivo: no trabar la cola
+      obDrop(op.id); _obReload = true;
+      showBanner('No se pudo guardar un cambio (' + escHtml(data.error) + '). Revisá el calendario.');
+      pumpOutbox();
+      return;
+    }
+    renderOutbox();                                   // sin conexión / servidor ocupado: reintento
+    _obTimer = setTimeout(pumpOutbox, 8000);
+  }, 30000);
+}
+function renderOutbox() {
+  var el = document.getElementById('outbox-bar');
+  if (!el) return;
+  var n = obLoad().length;
+  if (!n) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  var txt = n === 1 ? '1 cambio' : n + ' cambios';
+  el.style.display = '';
+  if (!getToken()) {
+    el.className = 'outbox-bar warn';
+    el.innerHTML = '&#9888; ' + txt + ' sin subir <button class="ob-btn" onclick="openPin()">Ingresar PIN</button>';
+  } else {
+    el.className = 'outbox-bar';
+    el.innerHTML = '&#8635; Subiendo ' + txt + '...';
+  }
+}
+
 function mergeUi(raw) {
   var base = C.panelUi;
   for (var k in raw) { if (raw.hasOwnProperty(k) && raw[k] !== undefined && raw[k] !== '') base[k] = raw[k]; }
@@ -1143,17 +1264,9 @@ function confirmCalChange() {
     toLocal(); renderCal();
     if (ds === dateKey(new Date())) renderHoy();
     closeCalModal();
-    if (USE_API) {
-      callAPI({ clientId: CLIENT_ID, action: 'setOverride', date: ds, who: nw }, function(err) {
-        if (err) {
-          // Reintento silencioso una vez; el dato ya está guardado local y se
-          // re-sincroniza en el próximo loadAll. Solo avisar si el reintento falla.
-          callAPI({ clientId: CLIENT_ID, action: 'setOverride', date: ds, who: nw }, function(err2) {
-            if (err2) showBanner('Sin conexión: el cambio se guardó y se subirá al reconectar.');
-          });
-        }
-      });
-    }
+    // Va a la cola: se sube en orden, de a uno, y si falla queda pendiente
+    // (visible arriba del calendario) en vez de perderse en el próximo refresco.
+    if (USE_API) obPush('setOverride', { date: ds, who: nw });
   }
 
   // Sin sesión activa: validar PIN primero
@@ -1204,8 +1317,8 @@ function resetCal() {
 function doResetCal() {
   C.overrides = {};
   C.cycleAnchor = null;   // vuelve al esquema original
-  if (USE_API) callAPI({ clientId: CLIENT_ID, action: 'resetOverrides' }, function() { loadAll(); });
-  else { toLocal(); renderCal(); renderHoy(); }
+  toLocal(); renderCal(); renderHoy();
+  if (USE_API) obPush('resetOverrides', {});
 }
 
 // ── Aplicar acuerdo desde un día (re-ancla el ciclo de 14 días) ──
@@ -1405,73 +1518,78 @@ function doApplyAgreement() {
 
   if (!USE_API) { showBanner(resumen); return; }
 
-  // Enviar por tandas: la API es JSONP (GET) y una lista larga revienta la URL
+  // Enviar por tandas: la API es JSONP (GET) y una lista larga revienta la URL.
+  // Cada tanda va a la cola (en orden); si algo falla queda pendiente y visible.
   var CHUNK = 120;
   var lotes = [];
   if (!drop.length) lotes.push([]);
   else for (var k = 0; k < drop.length; k += CHUNK) lotes.push(drop.slice(k, k + CHUNK));
 
-  var idx = 0;
-  function enviar() {
-    callAPI({
-      clientId: CLIENT_ID, action: 'applyAgreement',
+  for (var idx = 0; idx < lotes.length; idx++) {
+    obPush('applyAgreement', {
       from: a.from, who: a.who,
       drop: JSON.stringify(lotes[idx]),
       nolog: idx === 0 ? '0' : '1'
-    }, function(err) {
-      if (err) { showBanner('Aplicado localmente; se subirá al reconectar.'); return; }
-      idx++;
-      if (idx < lotes.length) { enviar(); return; }
-      showBanner(resumen);
-      loadAll();
     });
   }
-  enviar();
+  showBanner(resumen);
 }
 
 // ── Historial de cambios de custodia ─────────────────────────
+// Muestra TODO el historial (de a 50, con "Ver más"), el más reciente primero.
+// Fechas en DD/MM/AAAA y hora de carga cuando el servidor la tiene.
+var HIST_PAGE = 50;
+var _histShown = HIST_PAGE;
+function fmtDMY(ds) { var p = ('' + ds).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : escHtml(ds); }
+function fmtCuando(e) {
+  if (e.ts) {
+    var d = new Date(+e.ts);
+    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  return fmtDMY(e.at || '');
+}
 function renderHistory() {
   var box = document.getElementById('history-list');
   if (!box) return;
   var h = (C.overrideHistory || []).slice().reverse(); // más reciente primero
   if (!h.length) { box.innerHTML = '<div class="empty-state">Sin cambios registrados todavía</div>'; return; }
   var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
-  var html = '';
-  var limit = Math.min(h.length, 40);
+  var nom = function(w) { return w === 'papa' ? papa : (w === 'mama' ? mama : escHtml(w || '')); };
+  var limit = Math.min(h.length, _histShown);
+  var html = '<div class="hist-count">' + h.length + (h.length === 1 ? ' cambio registrado' : ' cambios registrados') + '</div>';
   for (var i = 0; i < limit; i++) {
-    var e = h[i];
+    var e = h[i], main;
     if (e.date === '*') {
-      html += '<div class="hist-item"><div class="hist-main">Calendario restaurado al esquema original</div><div class="hist-meta">'+ (e.by==='ex'?mama:papa) +' · '+e.at+'</div></div>';
-      continue;
+      main = 'Calendario restaurado al esquema original';
+    } else if (e.date === '#agreement') {
+      main = 'Acuerdo aplicado desde ' + fmtDMY(e.from || '') + ' (arranca ' + nom(e.who) + ')' +
+             (e.removed ? ' · ' + e.removed + ' cambio(s) manual(es) reemplazado(s)' : '');
+    } else if (e.date === '#bulk') {
+      main = e.note === 'restauracion'
+        ? 'Restauración: ' + escHtml(e.who) + ' día(s) recuperados del historial de versiones'
+        : escHtml(e.who) + ' día(s) ajustados en bloque';
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test('' + e.date)) {
+      var dia = DAYS[dsToDate(e.date).getDay()].substring(0, 3);
+      main = dia + ' ' + fmtDMY(e.date) + ' &rarr; <b>' + nom(e.who) + '</b>' +
+             (e.prev ? ' <span class="hist-prev">(antes ' + nom(e.prev) + ')</span>' : '') +
+             (e.note === 'recuperado' ? ' <span class="hist-bulk">recuperado</span>' : (e.bulk ? ' <span class="hist-bulk">acuerdo</span>' : ''));
+    } else {
+      main = escHtml(e.date) + ' &rarr; ' + nom(e.who);
     }
-    if (e.date === '#agreement') {
-      var fp = ('' + (e.from || '')).split('-');
-      var fdesde = fp.length === 3 ? fp[2] + '/' + fp[1] + '/' + fp[0] : (e.from || '');
-      var arranca = e.who === 'papa' ? papa : mama;
-      var reemp = e.removed ? ' · ' + e.removed + ' cambio(s) manual(es) reemplazado(s)' : '';
-      html += '<div class="hist-item"><div class="hist-main">Acuerdo aplicado desde ' + fdesde + ' (arranca ' + arranca + ')' + reemp + '</div>' +
-              '<div class="hist-meta">'+ (e.by==='ex'?mama:papa) +' · '+e.at+'</div></div>';
-      continue;
-    }
-    if (e.date === '#bulk') {
-      html += '<div class="hist-item"><div class="hist-main">' + e.who + ' día(s) ajustados en bloque</div>' +
-              '<div class="hist-meta">'+ (e.by==='ex'?mama:papa) +' · '+e.at+'</div></div>';
-      continue;
-    }
-    var parts = e.date.split('-');
-    var fecha = parts[2] + '/' + parts[1];
-    var whoN = e.who === 'papa' ? papa : (e.who === 'mama' ? mama : e.who);
-    var quien = e.by === 'ex' ? mama : papa;
-    var bulkTag = e.bulk ? ' <span class="hist-bulk">acuerdo</span>' : '';
-    html += '<div class="hist-item"><div class="hist-main">'+fecha+' → <b>'+whoN+'</b>'+bulkTag+'</div>' +
-            '<div class="hist-meta">por '+quien+' · '+e.at+'</div></div>';
+    html += '<div class="hist-item"><div class="hist-main">' + main + '</div>' +
+            '<div class="hist-meta">por ' + (e.by === 'ex' ? mama : papa) + ' · ' + fmtCuando(e) + '</div></div>';
+  }
+  if (h.length > limit) {
+    html += '<button class="setbtn hist-more" onclick="moreHistory()">Ver ' + Math.min(HIST_PAGE, h.length - limit) +
+            ' más (quedan ' + (h.length - limit) + ')</button>';
   }
   box.innerHTML = html;
 }
+function moreHistory() { _histShown += HIST_PAGE; renderHistory(); }
 function toggleHistory() {
   var box = document.getElementById('history-wrap');
   if (!box) return;
-  if (box.style.display === 'none' || !box.style.display) { box.style.display = 'block'; renderHistory(); }
+  if (box.style.display === 'none' || !box.style.display) { _histShown = HIST_PAGE; box.style.display = 'block'; renderHistory(); }
   else box.style.display = 'none';
 }
 
@@ -1485,7 +1603,7 @@ function handleEye() {
     clearToken();
     viewMode = 'locked';
     if (privTimer) clearTimeout(privTimer);
-    updLock(); renderAll(); updateAccessUI();
+    updLock(); renderAll(); updateAccessUI(); renderOutbox();
   } else {
     // Mostrar: pedir PIN
     openPin();
@@ -1504,8 +1622,10 @@ function applyViewMode(mode) {
   privTimer = setTimeout(function() {
     if (USE_API && getToken()) callAPI({ clientId: CLIENT_ID, action: 'logout', token: getToken() }, null);
     clearToken();
-    viewMode = 'locked'; updLock(); renderAll(); updateAccessUI(); updateNavAccess();
+    viewMode = 'locked'; updLock(); renderAll(); updateAccessUI(); updateNavAccess(); renderOutbox();
   }, 120000);
+  renderOutbox();
+  pumpOutbox();             // si había cambios pendientes, se suben ahora
 }
 function pinOkLocal(v) {
   if (authHash(v, 'owner') === PIN_HASH_OWNER) return 'full';
@@ -2440,6 +2560,8 @@ setInterval(tick, 1000);
 loadAll();
 setInterval(loadAll, 120000);
 setInterval(checkRems, 60000);
+renderOutbox();
+if (window.addEventListener) window.addEventListener('online', function() { pumpOutbox(); });
 </script>
 </body>
 </html>

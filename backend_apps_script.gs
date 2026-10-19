@@ -8,6 +8,45 @@ var SS_ID = '1rj-nUlQ8jTurpj2wNEEAcXLXNh0sr6rpfEpxMtIQ-D8';
 // TTL del token en milisegundos (2 horas)
 var TOKEN_TTL = 2 * 60 * 60 * 1000;
 
+// Sesiones simultáneas permitidas (Juan, Mariana, tablet, celulares...).
+// Antes había UN solo token: cada login pateaba al otro y cada logout
+// (automático a los 2 min) cerraba la sesión de todos.
+var MAX_SESIONES = 12;
+
+// ============================================================
+// CONCURRENCIA — todas las escrituras pasan por un único candado
+// ============================================================
+// Incidente 19/10/2026: dos guardados casi simultáneos se pisaron. Cada
+// request leía la config, la modificaba y la reescribía entera, y setConf
+// borraba la fila antes de volver a agregarla: el que leía en ese hueco
+// veía "sin cambios" y escribía su único día encima de todo.
+// Ahora: un candado por script (LockService) + escritura en el lugar.
+var _CANDADO = null;
+function withLock(fn) {
+  if (_CANDADO) return fn();                    // reentrante dentro de la misma ejecución
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(25000); }
+  catch (e) { return { error: 'servidor ocupado, reintentá en unos segundos', code: 503, busy: true }; }
+  _CANDADO = lock;
+  try { return fn(); }
+  finally {
+    try { SpreadsheetApp.flush(); } catch (x) {}
+    _CANDADO = null;
+    lock.releaseLock();
+  }
+}
+
+// Idempotencia: el panel manda un opId por cambio. Si un reintento llega
+// cuando el original ya se aplicó, no se vuelve a aplicar ni a registrar.
+function opYaAplicada(opId) {
+  if (!opId) return false;
+  try { return CacheService.getScriptCache().get('op_' + opId) === '1'; } catch (e) { return false; }
+}
+function marcarOp(opId) {
+  if (!opId) return;
+  try { CacheService.getScriptCache().put('op_' + opId, '1', 21600); } catch (e) {}
+}
+
 // ── Helpers de fecha ─────────────────────────────────────────
 function fmtDate(val) {
   if (!val) return '';
@@ -25,6 +64,9 @@ function mesAR()  { return Utilities.formatDate(new Date(), 'America/Argentina/B
 // ============================================================
 // ENTRADA PRINCIPAL
 // ============================================================
+// Acciones que sólo leen: no toman el candado.
+var SOLO_LECTURA = { getAll: 1, getEvents: 1, debug: 1, getResumen: 1 };
+
 function doGet(e) {
   var p   = e.parameter || {};
   var res;
@@ -36,43 +78,56 @@ function doGet(e) {
 
     if (!clientId) return jsonp(p.callback, { error: 'clientId requerido' });
 
-    // ── Acciones públicas (no requieren token) ────────────────
-    // Lectura y carga de datos cotidianos: sin friccion, sin PIN.
-    // El PIN/token solo protege acciones sensibles (presupuesto,
-    // calendario, configuracion), no la carga de gastos ni la lista.
-    if (act === 'getAll')           { res = getAll(ss, clientId, mes); }
-    else if (act === 'validatePin') { res = validatePin(ss, clientId, p.pin || ''); }
-    else if (act === 'debug')       { res = debug(ss, clientId, mes); }
-    else if (act === 'addExp')      { res = addExp(ss, clientId, p); }
-    else if (act === 'delExp')      { res = delExp(ss, clientId, p.id); }
-    else if (act === 'saveShopping'){ res = saveShopping(ss, clientId, p.list || '[]'); }
-    else if (act === 'getEvents')   { res = getCalendarEvents(p.month || mes); }
-    else if (act === 'saveEventExtra') { res = saveEventExtra(ss, clientId, p); }
-
-    // ── Acciones sensibles (requieren token válido) ───────────
-    else {
-      var tokenCheck = checkToken(ss, clientId, p.token || '');
-      if (!tokenCheck.ok) return jsonp(p.callback, { error: 'sesion invalida', code: 401 });
-
-      // quién hace el cambio, según el token (owner / ex)
-      var actorMode = tokenCheck.mode ? tokenCheck.mode : 'owner';
-
-      if      (act === 'clearMonth')     res = clearMonth(ss, clientId, p.month || mes);
-      else if (act === 'setBudget')      res = setConf(ss, clientId, 'budget', p.amount);
-      else if (act === 'setOverride')    res = setOverride(ss, clientId, p.date, p.who, actorMode);
-      else if (act === 'setOverridesBulk') res = setOverridesBulk(ss, clientId, p.changes, actorMode);
-      else if (act === 'resetOverrides') res = resetOverrides(ss, clientId, actorMode);
-      else if (act === 'addRem')         res = modRems(ss, clientId, 'add', p);
-      else if (act === 'delRem')         res = modRems(ss, clientId, 'del', p);
-      else if (act === 'setShareShop')   res = setConf(ss, clientId, 'share_shopping', p.value === 'true' ? 'true' : 'false');
-      else if (act === 'setPanelUi')     res = setPanelUi(ss, clientId, p);
-      else if (act === 'logout')         res = revokeToken(ss, clientId, p.token || '');
-      else                               res = { error: 'accion desconocida: ' + act };
-    }
+    if (SOLO_LECTURA[act]) res = rutear(ss, p, act, clientId, mes);
+    else res = withLock(function() { return rutear(ss, p, act, clientId, mes); });
   } catch (err) {
     res = { error: err.toString() };
   }
   return jsonp(p.callback, res);
+}
+
+function rutear(ss, p, act, clientId, mes) {
+  // ── Acciones públicas (no requieren token) ────────────────
+  // Lectura y carga de datos cotidianos: sin friccion, sin PIN.
+  // El PIN/token solo protege acciones sensibles (presupuesto,
+  // calendario, configuracion), no la carga de gastos ni la lista.
+  if (act === 'getAll')         return getAll(ss, clientId, mes);
+  if (act === 'validatePin')    return validatePin(ss, clientId, p.pin || '');
+  if (act === 'debug')          return debug(ss, clientId, mes);
+  if (act === 'addExp')         return addExp(ss, clientId, p);
+  if (act === 'delExp')         return delExp(ss, clientId, p.id);
+  if (act === 'saveShopping')   return saveShopping(ss, clientId, p.list || '[]');
+  if (act === 'getEvents')      return getCalendarEvents(p.month || mes);
+  if (act === 'saveEventExtra') return saveEventExtra(ss, clientId, p);
+  if (act === 'getResumen')     return getResumen(ss, clientId, p.month || mes);
+
+  // ── Acciones sensibles (requieren token válido) ───────────
+  var tokenCheck = checkToken(ss, clientId, p.token || '');
+  if (!tokenCheck.ok) return { error: 'sesion invalida', code: 401 };
+
+  // quién hace el cambio, según el token (owner / ex)
+  var actorMode = tokenCheck.mode ? tokenCheck.mode : 'owner';
+
+  var opId = /^[A-Za-z0-9_-]{1,64}$/.test('' + (p.opId || '')) ? '' + p.opId : '';
+  if (opId && opYaAplicada(opId)) return { ok: true, dup: true };
+
+  var res;
+  if      (act === 'clearMonth')       res = clearMonth(ss, clientId, p.month || mes);
+  else if (act === 'setBudget')        res = setConf(ss, clientId, 'budget', p.amount);
+  else if (act === 'setBudgetType')    res = setBudgetType(ss, clientId, p.value);
+  else if (act === 'setOverride')      res = setOverride(ss, clientId, p.date, p.who, actorMode);
+  else if (act === 'setOverridesBulk') res = setOverridesBulk(ss, clientId, p.changes, actorMode);
+  else if (act === 'applyAgreement')   res = applyAgreement(ss, clientId, p, actorMode);
+  else if (act === 'resetOverrides')   res = resetOverrides(ss, clientId, actorMode);
+  else if (act === 'addRem')           res = modRems(ss, clientId, 'add', p);
+  else if (act === 'delRem')           res = modRems(ss, clientId, 'del', p);
+  else if (act === 'setShareShop')     res = setConf(ss, clientId, 'share_shopping', p.value === 'true' ? 'true' : 'false');
+  else if (act === 'setPanelUi')       res = setPanelUi(ss, clientId, p);
+  else if (act === 'logout')           res = revokeToken(ss, clientId, p.token || '');
+  else                                 res = { error: 'accion desconocida: ' + act };
+
+  if (opId && res && !res.error) marcarOp(opId);
+  return res;
 }
 
 function jsonp(callback, data) {
@@ -101,31 +156,69 @@ function generateToken() {
   return token;
 }
 
-// Crea un token nuevo para el cliente y lo guarda en config
+// Sesiones: mapa { token: {mode, expiresAt, createdAt} } en la clave
+// 'session_tokens'. Varias sesiones conviven (owner y ex a la vez).
+function leerSesiones(cfg) {
+  var m = {};
+  try { m = JSON.parse(cfg.session_tokens || '{}') || {}; } catch (e) { m = {}; }
+  if (typeof m !== 'object' || m instanceof Array) m = {};
+  return m;
+}
+
+// Crea un token nuevo para el cliente (sin pisar las otras sesiones)
 function createToken(ss, clientId, mode) {
-  var token     = generateToken();
-  var expiresAt = Date.now() + TOKEN_TTL;
-  var tokenData = JSON.stringify({ token: token, mode: mode, expiresAt: expiresAt });
-  setConf(ss, clientId, 'session_token', tokenData);
-  return { ok: true, token: token, mode: mode, expiresAt: expiresAt };
+  return withLock(function() {
+    var cfg  = readConfig(ss, clientId);
+    var m    = leerSesiones(cfg);
+    var now  = Date.now();
+    var keys = Object.keys(m);
+    for (var i = 0; i < keys.length; i++) {
+      if (!m[keys[i]] || !(m[keys[i]].expiresAt > now)) delete m[keys[i]];   // vencidas
+    }
+    var token     = generateToken();
+    var expiresAt = now + TOKEN_TTL;
+    m[token] = { mode: mode, expiresAt: expiresAt, createdAt: now };
+    keys = Object.keys(m).sort(function(a, b) { return (m[a].createdAt || 0) - (m[b].createdAt || 0); });
+    while (keys.length > MAX_SESIONES) delete m[keys.shift()];               // tope: se van las más viejas
+    setConf(ss, clientId, 'session_tokens', JSON.stringify(m));
+    return { ok: true, token: token, mode: mode, expiresAt: expiresAt };
+  });
 }
 
 // Verifica que el token sea válido y no haya expirado
 function checkToken(ss, clientId, token) {
   if (!token) return { ok: false, error: 'token requerido' };
   var cfg = readConfig(ss, clientId);
-  if (!cfg.session_token) return { ok: false, error: 'sin sesion activa' };
-  var data;
-  try { data = JSON.parse(cfg.session_token); } catch(e) { return { ok: false, error: 'token corrupto' }; }
-  if (data.token !== token)          return { ok: false, error: 'token invalido' };
-  if (Date.now() > data.expiresAt)   return { ok: false, error: 'sesion expirada' };
-  return { ok: true, mode: data.mode };
+  var s   = leerSesiones(cfg)[token];
+  if (s) {
+    if (Date.now() > s.expiresAt) return { ok: false, error: 'sesion expirada' };
+    return { ok: true, mode: s.mode };
+  }
+  // Compatibilidad: sesión abierta con la versión anterior (un solo token)
+  if (cfg.session_token) {
+    try {
+      var d = JSON.parse(cfg.session_token);
+      if (d && d.token === token && Date.now() <= d.expiresAt) return { ok: true, mode: d.mode };
+    } catch (e) {}
+  }
+  return { ok: false, error: 'sesion invalida' };
 }
 
-// Invalida el token (logout)
+// Invalida SOLO el token de quien cierra sesión (antes cerraba la de todos)
 function revokeToken(ss, clientId, token) {
-  setConf(ss, clientId, 'session_token', '{}');
-  return { ok: true };
+  return withLock(function() {
+    if (!token) return { ok: true };
+    var cfg = readConfig(ss, clientId);
+    var m   = leerSesiones(cfg);
+    if (m[token]) { delete m[token]; setConf(ss, clientId, 'session_tokens', JSON.stringify(m)); }
+    if (cfg.session_token) {
+      try {
+        var d = JSON.parse(cfg.session_token);
+        if (d && d.token === token) setConf(ss, clientId, 'session_token', '{}');
+      } catch (e) {}
+    }
+    return { ok: true };
+  });
 }
 
 // ============================================================
@@ -171,26 +264,50 @@ function readConfig(ss, clientId) {
   return cfg;
 }
 
+// Escribe una clave de config EN SU LUGAR (nunca borra y re-agrega la fila:
+// ese hueco era el que dejaba a otro request leyendo "vacío").
+// Si quedaron filas duplicadas de la misma clave, deja sólo la vigente.
 function setConf(ss, clientId, key, val) {
-  var cs   = getConfigSheet(ss);
-  var data = cs.getDataRange().getValues();
-  for (var i = data.length - 1; i >= 0; i--) {
-    if ('' + data[i][0] === '' + clientId && '' + data[i][1] === '' + key) {
-      cs.deleteRow(i + 1);
+  return withLock(function() {
+    var cs   = getConfigSheet(ss);
+    var last = cs.getLastRow();
+    var data = last ? cs.getRange(1, 1, last, 2).getValues() : [];
+    var keep = -1, dups = [];
+    for (var i = 0; i < data.length; i++) {
+      if ('' + data[i][0] === '' + clientId && '' + data[i][1] === '' + key) {
+        if (keep >= 0) dups.push(keep);
+        keep = i;                                   // la última es la que lee readConfig
+      }
     }
-  }
-  cs.appendRow([clientId, key, val]);
-  SpreadsheetApp.flush();
-  return { ok: true };
+    if (keep >= 0) {
+      cs.getRange(keep + 1, 3).setValue(val);
+      for (var j = dups.length - 1; j >= 0; j--) cs.deleteRow(dups[j] + 1);   // de abajo hacia arriba
+    } else {
+      cs.appendRow([clientId, key, val]);
+    }
+    return { ok: true };
+  });
+}
+
+// Tipo de presupuesto: contra que gastos se mide el tope mensual.
+// Se valida contra la lista para no guardar basura desde la URL.
+var BUDGET_TYPES = { efectivo: 1, digital: 1, todo: 1 };
+function setBudgetType(ss, clientId, value) {
+  var v = '' + (value || '');
+  if (!BUDGET_TYPES[v]) return { error: 'tipo invalido: ' + v };
+  setConf(ss, clientId, 'budget_type', v);
+  return { ok: true, budgetType: v };
 }
 
 function ensureConf(ss, clientId, key, defVal) {
-  var cs   = getConfigSheet(ss);
-  var data = cs.getDataRange().getValues();
-  for (var i = 0; i < data.length; i++) {
-    if ('' + data[i][0] === '' + clientId && '' + data[i][1] === '' + key) return;
-  }
-  cs.appendRow([clientId, key, defVal]);
+  return withLock(function() {
+    var cs   = getConfigSheet(ss);
+    var data = cs.getDataRange().getValues();
+    for (var i = 0; i < data.length; i++) {
+      if ('' + data[i][0] === '' + clientId && '' + data[i][1] === '' + key) return;
+    }
+    cs.appendRow([clientId, key, defVal]);
+  });
 }
 
 // ============================================================
@@ -198,7 +315,7 @@ function ensureConf(ss, clientId, key, defVal) {
 // ============================================================
 function getAll(ss, clientId, month) {
   var res = {
-    expenses: [], budget: 3000000, overrides: {},
+    expenses: [], budget: 3000000, budgetType: 'efectivo', overrides: {}, cycleAnchor: null,
     reminders: [], shoppingList: [], shareShopping: true,
     panelUi: defaultPanelUi()
   };
@@ -232,12 +349,18 @@ function getAll(ss, clientId, month) {
   // Config
   var cfg = readConfig(ss, clientId);
   if (cfg.budget)         res.budget        = +cfg.budget || 3000000;
+  if (cfg.budget_type && BUDGET_TYPES['' + cfg.budget_type]) res.budgetType = '' + cfg.budget_type;
   if (cfg.overrides)      { try { res.overrides     = JSON.parse(cfg.overrides)     || {}; } catch(x){} }
+  if (cfg.cycle_anchor)   { try { var _a = JSON.parse(cfg.cycle_anchor); res.cycleAnchor = (_a && _a.date) ? _a : null; } catch(x){ res.cycleAnchor = null; } }
   if (cfg.reminders)      { try { res.reminders     = JSON.parse(cfg.reminders)     || []; } catch(x){} }
   if (cfg.shopping_list)  { try { res.shoppingList  = JSON.parse(cfg.shopping_list) || []; } catch(x){} }
   res.shareShopping = (cfg.share_shopping !== undefined) ? ('' + cfg.share_shopping) === 'true' : true;
   if (cfg.panel_ui)       { try { res.panelUi = mergePanelUi(JSON.parse(cfg.panel_ui)); } catch(x){} }
-  if (cfg.override_history){ try { res.overrideHistory = JSON.parse(cfg.override_history) || []; } catch(x){ res.overrideHistory = []; } }
+  // Historial: hoja 'historial' (una fila por cambio, sin tope). Si todavía
+  // no existe, se lee la clave vieja de config.
+  var hs = readHistorial(ss, clientId, HIST_MAX_GETALL);
+  if (hs) res.overrideHistory = hs;
+  else if (cfg.override_history) { try { res.overrideHistory = JSON.parse(cfg.override_history) || []; } catch(x){ res.overrideHistory = []; } }
   else res.overrideHistory = [];
   if (cfg.event_extras)   { try { res.eventExtras = JSON.parse(cfg.event_extras) || {}; } catch(x){ res.eventExtras = {}; } }
   else res.eventExtras = {};
@@ -289,6 +412,8 @@ function clearMonth(ss, clientId, month) {
 // CONFIG HELPERS
 // ============================================================
 function setOverride(ss, clientId, date, who, actorMode) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test('' + date)) return { error: 'fecha invalida' };
+  if (who !== 'papa' && who !== 'mama')     return { error: 'valor invalido: ' + who };
   var cfg = readConfig(ss, clientId);
   var ov  = {};
   try { ov = JSON.parse(cfg.overrides || '{}') || {}; } catch(x) {}
@@ -307,40 +432,143 @@ function setOverridesBulk(ss, clientId, changesJson, actorMode) {
   var cfg = readConfig(ss, clientId);
   var ov  = {};
   try { ov = JSON.parse(cfg.overrides || '{}') || {}; } catch(x) {}
+  var n = 0;
   for (var i = 0; i < changes.length; i++) {
     var c = changes[i];
     if (!c || !c.date || !c.who) continue;
-    var prev = ov[c.date] || '';
     ov[c.date] = c.who;
-    registrarHistorial(ss, clientId, c.date, prev, c.who, actorMode, true);
+    n++;
   }
   setConf(ss, clientId, 'overrides', JSON.stringify(ov));
-  return { ok: true, applied: changes.length };
+  // Una sola entrada de historial por operacion masiva: escribir una por dia
+  // desbordaba el tope de 200 y borraba el historico previo.
+  if (n) registrarHistorial(ss, clientId, '#bulk', '', '' + n, actorMode, true);
+  return { ok: true, applied: n };
+}
+
+// Aplica el acuerdo base desde una fecha, re-anclando el ciclo de 14 dias.
+// - from: 'YYYY-MM-DD', primer dia del acuerdo
+// - who:  'papa' | 'mama', con quien arranca ese primer dia
+// - drop: JSON array de fechas cuyo cambio manual se descarta (vuelven al acuerdo)
+// Nunca toca fechas anteriores a 'from': el historico queda intacto.
+function applyAgreement(ss, clientId, p, actorMode) {
+  var from = '' + (p.from || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return { error: 'fecha invalida' };
+  var who = (p.who === 'papa') ? 'papa' : 'mama';
+
+  var drop = [];
+  try { drop = JSON.parse(p.drop || '[]') || []; } catch (e) { drop = []; }
+  if (!(drop instanceof Array)) drop = [];
+
+  var cfg = readConfig(ss, clientId);
+  var ov  = {};
+  try { ov = JSON.parse(cfg.overrides || '{}') || {}; } catch (x) {}
+
+  var removed = 0;
+  for (var i = 0; i < drop.length; i++) {
+    var dk = '' + drop[i];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
+    if (dk < from) continue;                       // blindaje: jamas hacia atras
+    if (ov.hasOwnProperty(dk)) { delete ov[dk]; removed++; }
+  }
+
+  setConf(ss, clientId, 'overrides', JSON.stringify(ov));
+  setConf(ss, clientId, 'cycle_anchor', JSON.stringify({ date: from, who: who }));
+
+  // nolog='1' lo usan los envios por tandas para no duplicar el historial
+  if (('' + (p.nolog || '')) !== '1') {
+    registrarHistorial(ss, clientId, '#agreement', '', who, actorMode, true, from, removed);
+  }
+  return { ok: true, removed: removed, anchor: { date: from, who: who } };
 }
 
 function resetOverrides(ss, clientId, actorMode) {
   setConf(ss, clientId, 'overrides', '{}');
+  setConf(ss, clientId, 'cycle_anchor', '');   // vuelve al esquema original
   registrarHistorial(ss, clientId, '*', '', 'reset', actorMode);
   return { ok: true };
 }
 
+// ============================================================
+// HISTORIAL DE CAMBIOS DE CUSTODIA — hoja 'historial'
+// ============================================================
+// Una fila por cambio, sólo se agrega (append), nunca se reescribe.
+// Antes era un JSON en una celda de config con tope de 200: cualquier
+// carrera lo reescribía entero y por eso el panel mostraba sólo 2.
+var HIST_COLS = ['ts','clientId','date','prev','who','by','at','bulk','from','removed','note'];
+var HIST_MAX_GETALL = 1000;
+
+function getHistSheet(ss) {
+  var sh = ss.getSheetByName('historial');
+  if (!sh) {
+    sh = ss.insertSheet('historial');
+    var head = sh.getRange(1, 1, 1, HIST_COLS.length);
+    head.setNumberFormat('@');
+    head.setValues([HIST_COLS]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// Agrega filas como texto plano (sin que Sheets convierta '2026-11-18' en fecha)
+function appendHistRows(sh, rows) {
+  if (!rows || !rows.length) return;
+  var start = sh.getLastRow() + 1;
+  var need  = start + rows.length - 1;
+  if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+  var rng = sh.getRange(start, 1, rows.length, HIST_COLS.length);
+  rng.setNumberFormat('@');
+  rng.setValues(rows);
+}
+
+function textoHist(v) {
+  if (v instanceof Date) return fmtDate(v);
+  return (v === null || v === undefined) ? '' : '' + v;
+}
+
+// Entradas del cliente ordenadas por momento de carga (ts).
+// null = la hoja todavía no existe (getAll usa la clave vieja de config).
+function readHistorial(ss, clientId, limit) {
+  var sh = ss.getSheetByName('historial');
+  if (!sh) return null;
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var rows = sh.getRange(2, 1, last - 1, HIST_COLS.length).getValues();
+  var out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (textoHist(r[1]) !== '' + clientId) continue;
+    var e = {
+      ts:   +r[0] || 0,
+      date: textoHist(r[2]),
+      prev: textoHist(r[3]),
+      who:  textoHist(r[4]),
+      by:   textoHist(r[5]) === 'ex' ? 'ex' : 'owner',
+      at:   textoHist(r[6]),
+      bulk: textoHist(r[7]) === '1' ? 1 : 0
+    };
+    if (textoHist(r[8]) !== '')  e.from    = textoHist(r[8]);
+    if (textoHist(r[9]) !== '')  e.removed = +r[9] || 0;
+    if (textoHist(r[10]) !== '') e.note    = textoHist(r[10]);
+    out.push(e);
+  }
+  out.sort(function(a, b) { return a.ts - b.ts; });
+  if (limit && out.length > limit) out = out.slice(out.length - limit);
+  return out;
+}
+
 // Registra una línea en el historial de cambios de custodia
-function registrarHistorial(ss, clientId, date, prev, who, actorMode, bulk) {
-  var cfg = readConfig(ss, clientId);
-  var hist = [];
-  try { hist = JSON.parse(cfg.override_history || '[]') || []; } catch(x) {}
-  hist.push({
-    date: date,
-    prev: prev,
-    who: who,
-    by: actorMode === 'ex' ? 'ex' : 'owner',
-    at: hoyAR(),
-    ts: Date.now(),
-    bulk: bulk ? 1 : 0
+function registrarHistorial(ss, clientId, date, prev, who, actorMode, bulk, from, removed, note) {
+  return withLock(function() {
+    appendHistRows(getHistSheet(ss), [[
+      '' + Date.now(), '' + clientId, '' + date, '' + (prev || ''), '' + (who || ''),
+      actorMode === 'ex' ? 'ex' : 'owner', hoyAR(), bulk ? '1' : '0',
+      (from === undefined || from === null) ? '' : '' + from,
+      (removed === undefined || removed === null) ? '' : '' + removed,
+      note ? '' + note : ''
+    ]]);
+    return { ok: true };
   });
-  // Limitar a las últimas 200 entradas para no inflar
-  if (hist.length > 200) hist = hist.slice(hist.length - 200);
-  setConf(ss, clientId, 'override_history', JSON.stringify(hist));
 }
 
 // ============================================================
@@ -649,7 +877,7 @@ function deleteTestClient() {
 
 // Token del bot de Telegram. IMPORTANTE: si este token se filtró,
 // regeneralo en @BotFather (/revoke) y reemplazá solo esta línea.
-var TG_BOT_TOKEN = '8902659574:AAH3wN1Di3gAzw0YMI_jhmnoYV9s3BPMUSw';
+var TG_BOT_TOKEN = 'TOKEN_SOLO_EN_EL_EDITOR';   // copia local/repo: el token real vive sólo en el editor de Apps Script
 
 // Chat ID de Juanma (destino de las alertas del panel personal).
 var TG_CHAT_ID = '15534655';
@@ -684,23 +912,42 @@ function tgSend(text) {
 
 // ── Custodia del lado del servidor ───────────────────────────
 function tgPad2(n) { return n < 10 ? '0' + n : '' + n; }
-function tgDateKey(d) { return d.getFullYear() + '-' + tgPad2(d.getMonth()+1) + '-' + tgPad2(d.getDate()); }
+function tgDateKey(d) { return Utilities.formatDate(d, 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd'); }
+
+// Ancla del acuerdo vigente ({date, who}); la carga tgGetOverrides() junto con los overrides.
+var TG_ANCHOR = null;
 
 function tgGetOverrides() {
+  TG_ANCHOR = null;
   try {
     var ss  = SpreadsheetApp.openById(SS_ID);
     var cfg = readConfig(ss, TG_CLIENT_ID);
+    if (cfg.cycle_anchor) {
+      try { var a = JSON.parse(cfg.cycle_anchor); TG_ANCHOR = (a && a.date) ? a : null; } catch (x) { TG_ANCHOR = null; }
+    }
     return JSON.parse(cfg.overrides || '{}') || {};
   } catch (e) { return {}; }
 }
 
+function tgDsToDate(ds) {
+  var p = ('' + ds).split('-');
+  return new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
+}
+
+// Misma resolucion en 3 capas que getCustody() del panel:
+// 1) override del dia  2) ciclo re-anclado (cycle_anchor)  3) esquema original.
 function tgGetCustody(dateStr, overrides) {
   if (overrides && overrides[dateStr]) return overrides[dateStr];
-  var p = dateStr.split('-');
-  var d = new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
-  var sp = TG_CYCLE_START.split('-');
-  var start = new Date(parseInt(sp[0],10), parseInt(sp[1],10)-1, parseInt(sp[2],10));
-  var diff = Math.round((d.getTime() - start.getTime()) / 86400000);
+  var d = tgDsToDate(dateStr);
+  if (TG_ANCHOR && TG_ANCHOR.date) {
+    var dd = Math.round((d.getTime() - tgDsToDate(TG_ANCHOR.date).getTime()) / 86400000);
+    if (dd >= 0) {
+      var slot = TG_CYCLE[((dd % 14) + 14) % 14];
+      if (TG_ANCHOR.who === 'papa') return slot === 'mama' ? 'papa' : 'mama';
+      return slot;
+    }
+  }
+  var diff = Math.round((d.getTime() - tgDsToDate(TG_CYCLE_START).getTime()) / 86400000);
   if (diff < 0) return null;
   return TG_CYCLE[((diff % 14) + 14) % 14];
 }
@@ -749,7 +996,9 @@ function fmtMoneyAR(n) {
 }
 
 // ── ALERTA: recordatorios (cada minuto) ──────────────────────
-function tgCheckRecordatorios() {
+// El trigger corre cada minuto y reescribe 'reminders': mismo candado que la web.
+function tgCheckRecordatorios() { return withLock(tgCheckRecordatoriosSinLock); }
+function tgCheckRecordatoriosSinLock() {
   var ss = SpreadsheetApp.openById(SS_ID);
   var cfg = readConfig(ss, TG_CLIENT_ID);
   var rems = [];
@@ -1013,4 +1262,131 @@ function tgAlertaEventos3hs() {
   for (var j = 0; j < remaining.length; j++) {
     ScriptApp.newTrigger('tgAlertaEventos3hs').timeBased().at(new Date(remaining[j].alertAt)).create();
   }
+}
+
+// ============================================================
+// RESUMEN DEL MES (público, sólo lectura) — lo usa el informe diario
+// ============================================================
+function getResumen(ss, clientId, month) {
+  var cfg    = readConfig(ss, clientId);
+  var budget = +cfg.budget || 3000000;          // total del mes (base + arrastre, como en el panel)
+  var m      = month || mesAR();
+ 
+  var cash = 0, billetera = 0, tarjetaArs = 0, tarjetaUsd = 0;
+  var gs = ss.getSheetByName('gastos');
+  if (gs && gs.getLastRow() > 1) {
+    var ncols = gs.getLastColumn();
+    var rows  = gs.getRange(2, 1, gs.getLastRow() - 1, ncols).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (!r[0]) continue;
+      var rowClient = ncols >= 9 ? '' + r[8] : '';
+      if (rowClient && rowClient !== '' + clientId) continue;
+      var d = fmtDate(r[1]);
+      if (d.substring(0, 7) !== m) continue;
+      var pay    = (ncols > 6 && r[6]) ? ('' + r[6]).toLowerCase() : 'efectivo';
+      var moneda = (ncols > 9 && r[9]) ? '' + r[9] : 'ARS';
+      var amt    = +r[3] || 0;
+      if (pay === 'efectivo' || pay === '')  cash      += amt;
+      else if (pay === 'billetera')          billetera += amt;
+      else { if (moneda === 'USD') tarjetaUsd += amt; else tarjetaArs += amt; } // tarjeta = resto
+    }
+  }
+ 
+  return {
+    ok: true,
+    month: m,
+    total: budget,                          // total del mes (3.100.000)
+    gastado_efectivo: cash,                 // 2.514.612
+    gastado_billetera: billetera,
+    disponible_efectivo: budget - cash,     // 585.388  <-- el "dinero para existir" real
+    tarjeta_ars: tarjetaArs,                // 989.483 (comprometido, no descuenta)
+    tarjeta_usd: tarjetaUsd,                // 20
+    total_general: cash + billetera + tarjetaArs
+  };
+}
+
+// ============================================================
+// RESTAURACIÓN 19/10/2026 — correr UNA sola vez desde el editor
+// ============================================================
+// Elegí "restaurarCustodia20261019" en el selector de funciones → Ejecutar.
+// - Lo cargado DESPUÉS del incidente manda sobre lo recuperado.
+// - Deja una sola fila por clave en 'config' y pasa el historial a la hoja
+//   'historial'. Si se corre de nuevo, no hace nada.
+// Días recuperados (reconstruidos cruzando 9 versiones del Sheet:
+// 11/10 10:24 y 19/10 10:12, 10:14, 10:17, 10:19, 10:20, 10:21, 10:27, 10:29).
+var RESTAURACION_20261019 = {
+  "2026-08-17": "mama", "2026-08-19": "papa", "2026-08-21": "mama", "2026-08-26": "mama", "2026-08-28": "papa", "2026-08-29": "papa", "2026-08-31": "mama",
+  "2026-09-01": "mama", "2026-09-02": "papa", "2026-09-03": "papa",
+  "2026-10-09": "mama",
+  "2026-11-18": "papa", "2026-11-19": "papa", "2026-11-20": "mama", "2026-11-21": "mama", "2026-11-22": "mama", "2026-11-24": "papa", "2026-11-26": "mama", "2026-11-28": "papa", "2026-11-29": "papa", "2026-11-30": "mama",
+  "2026-12-01": "mama", "2026-12-03": "papa", "2026-12-07": "papa", "2026-12-08": "papa", "2026-12-10": "mama",
+  "2027-01-06": "mama", "2027-01-07": "mama", "2027-01-11": "mama", "2027-01-12": "mama", "2027-01-13": "papa", "2027-01-14": "papa"
+};
+
+// Historial recuperado: [ts, día, antes, quién, por, fecha de carga, bulk]
+var HISTORIAL_RECUPERADO_20261019 = [
+  [1791670916511,"2026-10-09","mama","papa","owner","2026-10-10",0],
+  [1791670917477,"2026-10-09","mama","mama","owner","2026-10-10",0],
+  [1792415575798,"2026-11-18","","papa","ex","2026-10-19",0],
+  [1792415665787,"2026-11-22","","mama","ex","2026-10-19",0],
+  [1792415667478,"2026-11-24","","papa","ex","2026-10-19",0],
+  [1792415675769,"2026-11-26","","mama","ex","2026-10-19",0],
+  [1792415680864,"2026-11-29","","papa","ex","2026-10-19",0],
+  [1792415687590,"2026-11-28","","papa","ex","2026-10-19",0],
+  [1792415691364,"2026-11-30","","mama","ex","2026-10-19",0],
+  [1792415826976,"2026-11-18","","papa","ex","2026-10-19",0],
+  [1792415828266,"2026-11-19","","papa","ex","2026-10-19",0],
+  [1792415941300,"2026-12-01","","mama","ex","2026-10-19",0],
+  [1792415958165,"2026-12-03","","papa","ex","2026-10-19",0],
+  [1792416007616,"2026-12-07","","papa","ex","2026-10-19",0],
+  [1792416007723,"2026-12-08","","papa","ex","2026-10-19",0],
+  [1792416079340,"2026-12-08","","papa","ex","2026-10-19",0],
+  [1792416541229,"2027-01-12","","mama","owner","2026-10-19",0],
+  [1792416544636,"2027-01-13","","papa","owner","2026-10-19",0],
+  [1792416544703,"2027-01-14","","papa","owner","2026-10-19",0]
+];
+function restaurarCustodia20261019() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('restauracion_20261019') === 'hecha') {
+    Logger.log('La restauración ya se había corrido: no hago nada.');
+    return { ok: true, yaHecha: true };
+  }
+  var r = withLock(function() {
+    var ss  = SpreadsheetApp.openById(SS_ID);
+    var cid = 'juanma';
+    var cfg = readConfig(ss, cid);
+    var cur = {};
+    try { cur = JSON.parse(cfg.overrides || '{}') || {}; } catch (e) { cur = {}; }
+
+    var merged = {}, k, agregados = 0, conflictos = [];
+    for (k in RESTAURACION_20261019) merged[k] = RESTAURACION_20261019[k];
+    for (k in cur) {
+      if (!cur.hasOwnProperty(k)) continue;
+      if (merged.hasOwnProperty(k) && merged[k] !== cur[k]) conflictos.push(k + ' recuperado ' + merged[k] + ' / actual ' + cur[k]);
+      merged[k] = cur[k];
+    }
+    for (k in merged) if (merged.hasOwnProperty(k) && !cur.hasOwnProperty(k)) agregados++;
+
+    setConf(ss, cid, 'overrides', JSON.stringify(merged));             // en su lugar + borra duplicadas
+    if (cfg.override_history !== undefined) setConf(ss, cid, 'override_history', '' + cfg.override_history); // sólo deduplica
+
+    // Historial recuperado → hoja 'historial' (sin duplicar)
+    var sh = getHistSheet(ss);
+    var ya = {}, prev = readHistorial(ss, cid, 0) || [];
+    for (var i = 0; i < prev.length; i++) ya[prev[i].ts + '|' + prev[i].date + '|' + prev[i].who] = 1;
+    var filas = [];
+    for (var j = 0; j < HISTORIAL_RECUPERADO_20261019.length; j++) {
+      var h = HISTORIAL_RECUPERADO_20261019[j];
+      if (ya[h[0] + '|' + h[1] + '|' + h[3]]) continue;
+      filas.push(['' + h[0], cid, h[1], h[2], h[3], h[4], h[5], '' + h[6], '', '', 'recuperado']);
+    }
+    appendHistRows(sh, filas);
+    registrarHistorial(ss, cid, '#bulk', '', '' + agregados, 'owner', true, undefined, undefined, 'restauracion');
+    return { ok: true, total: Object.keys(merged).length, agregados: agregados,
+             conflictos: conflictos, historialImportado: filas.length };
+  });
+  if (r && r.ok) props.setProperty('restauracion_20261019', 'hecha');
+  Logger.log(JSON.stringify(r));
+  return r;
 }
