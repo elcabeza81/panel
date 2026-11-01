@@ -65,7 +65,7 @@ function mesAR()  { return Utilities.formatDate(new Date(), 'America/Argentina/B
 // ENTRADA PRINCIPAL
 // ============================================================
 // Acciones que sólo leen: no toman el candado.
-var SOLO_LECTURA = { getAll: 1, getEvents: 1, debug: 1, getResumen: 1 };
+var SOLO_LECTURA = { getAll: 1, getEvents: 1, debug: 1, getResumen: 1, getHorizonte: 1 };
 
 function doGet(e) {
   var p   = e.parameter || {};
@@ -101,6 +101,7 @@ function rutear(ss, p, act, clientId, mes) {
   if (act === 'getEvents')      return getCalendarEvents(p.month || mes);
   if (act === 'saveEventExtra') return saveEventExtra(ss, clientId, p);
   if (act === 'getResumen')     return getResumen(ss, clientId, p.month || mes);
+  if (act === 'getHorizonte')   return getHorizonte(ss, clientId, p.token || ''); // valida su propio token (sólo el dueño)
 
   // ── Acciones sensibles (requieren token válido) ───────────
   var tokenCheck = checkToken(ss, clientId, p.token || '');
@@ -1402,4 +1403,168 @@ function restaurarCustodia20261019() {
   if (r && r.ok) props.setProperty('restauracion_20261019', 'hecha');
   Logger.log(JSON.stringify(r));
   return r;
+}
+
+// ============================================================
+// HORIZONTE — "Cómo estoy" en la pantalla HOY (sólo lectura, sólo el dueño)
+// ============================================================
+// El panel es una página pública: el token del lector de Horizonte NO puede
+// viajar al navegador. Este backend le pide los datos al lector del lado del
+// servidor y devuelve sólo cuatro cosas ya calculadas.
+//
+// Script Properties (las carga Juanma, nadie más las ve):
+//   HORIZONTE_LECTOR_URL     URL /exec del lector de Horizonte (lectura_ha)
+//   HORIZONTE_LECTOR_TOKEN   el mismo token que usa Home Assistant (HA_TOKEN del lector)
+//   HORIZONTE_PLATA_GUARDADA (opcional) la "plata guardada" que se carga en el
+//                            tablero de HA. Vive sólo en HA, no en la planilla.
+//                            Si no está, el Libre se calcula sin ella y lo dice.
+//
+// Libre = caja del panel (getResumen) + plata guardada + lo que entró este mes
+//         aparte del acuerdo (extras y sueldo) − obligaciones del mes (reserva)
+//         − gastos fijos en efectivo. Misma fórmula que sensor.horizonte_libre.
+//
+// Nunca un 0 falso: si una parte falta, ese dato sale null y el motivo va en `faltan`.
+var HZ_CACHE_KEY   = 'hz_como_estoy_v1';
+var HZ_CACHE_SEG   = 300;     // 5 min: el lector tarda varios segundos
+var HZ_BUENO_KEY   = 'hz_como_estoy_ultimo_bueno';
+var HZ_BUENO_SEG   = 21600;   // 6 h: si el lector no responde, va el último dato bueno (con su hora)
+var HZ_DIAS_SEMANA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+
+function getHorizonte(ss, clientId, token) {
+  var t = checkToken(ss, clientId, token);
+  if (!t.ok || t.mode !== 'full') return { error: 'sesion invalida', code: 401 };
+
+  var cache = CacheService.getScriptCache();
+  try { var c = cache.get(HZ_CACHE_KEY); if (c) return JSON.parse(c); } catch (e) {}
+
+  var res;
+  try { res = hzArmar(ss, clientId); }
+  catch (err) { res = { ok: false, error: String(err) }; }
+
+  if (res.ok) {
+    try {
+      var s = JSON.stringify(res);
+      cache.put(HZ_CACHE_KEY, s, HZ_CACHE_SEG);
+      cache.put(HZ_BUENO_KEY, s, HZ_BUENO_SEG);
+    } catch (e) {}
+    return res;
+  }
+  // El lector falló: el último dato bueno, marcado como atrasado (la página muestra su hora).
+  try {
+    var b = cache.get(HZ_BUENO_KEY);
+    if (b) { var v = JSON.parse(b); v.atrasado = true; v.error_actual = res.error; return v; }
+  } catch (e) {}
+  return res;
+}
+
+function hzLeerLector() {
+  var props = PropertiesService.getScriptProperties();
+  var url   = props.getProperty('HORIZONTE_LECTOR_URL');
+  var tok   = props.getProperty('HORIZONTE_LECTOR_TOKEN');
+  if (!url || !tok) throw new Error('faltan HORIZONTE_LECTOR_URL / HORIZONTE_LECTOR_TOKEN en Script Properties');
+  var r = UrlFetchApp.fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(tok),
+                            { muteHttpExceptions: true, followRedirects: true });
+  if (r.getResponseCode() !== 200) throw new Error('lector HTTP ' + r.getResponseCode());   // sin la URL: lleva el token
+  var d = JSON.parse(r.getContentText());
+  if (!d || d.ok !== true) throw new Error('lector: ' + ((d && d.error) || 'respuesta inválida'));
+  return d;
+}
+
+function hzNum(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+function hzFecha(iso) {   // '2026-11-02' -> 'lun 02/11'
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '';
+  var d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)));
+  return HZ_DIAS_SEMANA[d.getUTCDay()] + ' ' + iso.slice(8, 10) + '/' + iso.slice(5, 7);
+}
+function hzNombre(o) { return String(o.proveedor || o.producto || o.catalogo_id || '').trim(); }
+
+function hzArmar(ss, clientId) {
+  var L   = hzLeerLector();
+  var hoy = hoyAR(), mes = mesAR();
+  var out = {
+    ok: true,
+    dato_de: Utilities.formatDate(new Date(), 'America/Argentina/Buenos_Aires', "yyyy-MM-dd'T'HH:mm"),
+    periodo: L.periodo || '',
+    libre: null, proximo: null, tarjeta: null, obligaciones: null,
+    faltan: []
+  };
+  var periodoOk = (L.periodo === mes);
+  var obl = L.obligaciones || {};
+  var oblOk = periodoOk && !obl.error && (+obl.filas || 0) > 0;
+  if (!periodoOk) out.faltan.push('el lector devolvió ' + L.periodo + ' y el mes es ' + mes);
+  else if (obl.error) out.faltan.push('obligaciones: ' + obl.error);
+  else if (!oblOk) out.faltan.push('obligaciones: el mes todavía no tiene filas (el generador no corrió)');
+
+  // ── 1. Libre ────────────────────────────────────────────────
+  var caja = hzNum((getResumen(ss, clientId, mes) || {}).disponible_efectivo);
+  var gf   = L.gastos_fijos || {};
+  var ing  = L.ingresos || {};
+  var reserva = oblOk ? hzNum(obl.reserva_total_ars) : null;
+  var fijos   = gf.error ? null : hzNum(gf.total_ars);
+  var entro   = (periodoOk && !ing.error && hzNum(ing.otros_ars) !== null && hzNum(ing.sueldo_ars) !== null)
+                ? ing.otros_ars + ing.sueldo_ars : null;
+  var gProp   = PropertiesService.getScriptProperties().getProperty('HORIZONTE_PLATA_GUARDADA');
+  var guardada = (gProp !== null && gProp !== '' && isFinite(+gProp)) ? +gProp : null;
+  if (caja === null)  out.faltan.push('libre: falta la caja del panel');
+  if (fijos === null) out.faltan.push('libre: faltan los gastos fijos');
+  if (entro === null) out.faltan.push('libre: faltan los ingresos del mes');
+  if (caja !== null && reserva !== null && fijos !== null && entro !== null) {
+    var ultimo = new Date(+mes.slice(0, 4), +mes.slice(5, 7), 0).getDate();
+    var dias = ultimo - +hoy.slice(8, 10) + 1;                       // como HA: hoy incluido
+    var libre = Math.round(caja + (guardada || 0) + entro - reserva - fijos);
+    out.libre = {
+      ars: libre, por_dia: Math.round(libre / dias), dias: dias,
+      caja: Math.round(caja), plata_guardada: guardada, entro: Math.round(entro),
+      obligaciones: Math.round(reserva), gastos_fijos: Math.round(fijos),
+      sin_plata_guardada: guardada === null
+    };
+  }
+
+  // ── 2 y 4. Obligaciones ────────────────────────────────────
+  if (oblOk) {
+    var det = (obl.detalle || []).filter(function (d) { return d.incluir; });
+    var porPagar = det.filter(function (d) { return !d.pagada && !d.sin_saldo; });
+    var salen = porPagar.filter(function (d) { return !d.en_tarjeta && d.vence_iso && +d.monto_ars > 0; });
+    salen.sort(function (a, b) { return a.vence_iso < b.vence_iso ? -1 : (a.vence_iso > b.vence_iso ? 1 : 0); });
+    var vista = function (d) {
+      return { nombre: hzNombre(d), ars: Math.round(+d.monto_ars || 0), estimado: !!d.estimado,
+               vence_iso: d.vence_iso, vence: hzFecha(d.vence_iso), vence_estimado: !!d.vence_estimado,
+               dias: d.dias, vencida: d.estado === 'vencida',
+               debito: /d[eé]bito/i.test(String(d.modo_pago || '')) };
+    };
+    // Lo próximo que sale: el pago más grande de los próximos 7 días (o vencido); si no hay, el más cercano.
+    var semana = salen.filter(function (d) { return d.dias !== null && d.dias <= 7; });
+    var grande = semana.length
+      ? semana.reduce(function (m, d) { return (+d.monto_ars > +m.monto_ars) ? d : m; })
+      : salen[0];
+    out.proximo = grande ? vista(grande) : { nada: true };
+    out.obligaciones = {
+      total: det.length, pagadas: det.length - porPagar.length, faltan: porPagar.length,
+      por_pagar_ars: Math.round(+obl.reserva_por_pagar_ars || 0),
+      proxima: salen.length ? vista(salen[0]) : null
+    };
+  }
+
+  // ── 3. Tarjeta abierta ─────────────────────────────────────
+  var tc = L.tarjeta_cuenta || {};
+  if (tc.disponible === true && tc.abierto) {
+    var ab = tc.abierto;
+    out.tarjeta = {
+      nombre: (String(tc.tarjeta || '') + ' ' + String(tc.terminada_en || '')).trim(),
+      ars: Math.round(+ab.total_ars || 0), usd: Math.round((+ab.total_usd || 0) * 100) / 100,
+      estimado_cierre_ars: hzNum(ab.estimado_cierre_ars) !== null ? Math.round(ab.estimado_cierre_ars) : null,
+      cierra_iso: ab.cierra_iso, cierra: hzFecha(ab.cierra_iso), dias_al_cierre: ab.dias_al_cierre,
+      cierre_estimado: !!ab.cierre_estimado,
+      vence_iso: ab.vence_iso, vence: hzFecha(ab.vence_iso)
+    };
+  } else {
+    out.faltan.push('tarjeta: ' + (tc.error || tc.motivo || 'sin dato'));
+  }
+  return out;
+}
+
+// Prueba desde el editor (no muestra el token): elegí "probarHorizonte" → Ejecutar → ver el registro.
+function probarHorizonte() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  Logger.log(JSON.stringify(hzArmar(ss, TG_CLIENT_ID), null, 2));
 }

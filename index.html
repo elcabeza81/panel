@@ -150,6 +150,18 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .mbtns  { display: -webkit-flex; display: flex; }
 .mbtn-c  { -webkit-flex: 1; flex: 1; background: none; border: 1px solid #30363d; border-radius: 8px; color: #7d8590; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 700; padding: 10px; cursor: pointer; margin-right: 8px; }
 .mbtn-ok { -webkit-flex: 1; flex: 1; background: #e3b341; color: #0d1117; border: none; border-radius: 8px; font-family: 'Nunito', sans-serif; font-size: 14px; font-weight: 900; padding: 10px; cursor: pointer; }
+.hz-head { display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between; -webkit-align-items: baseline; align-items: baseline; }
+.hz-fecha { font-size: 10px; color: #7d8590; text-align: right; margin-left: 8px; }
+.hz-fecha.atr { color: #e3b341; }
+.hz-libre { padding-bottom: 12px; border-bottom: 1px solid #30363d; }
+.hz-big { font-size: 30px; font-weight: 900; line-height: 1.1; margin: 2px 0 2px; cursor: pointer; }
+.hz-row { padding: 10px 0; border-bottom: 1px solid #30363d; }
+.hz-row:last-child { border-bottom: none; padding-bottom: 0; }
+.hz-val { font-size: 15px; font-weight: 800; line-height: 1.35; }
+.hz-val b { color: #e3b341; font-weight: 900; }
+.hz-sub { font-size: 11px; color: #7d8590; margin-top: 2px; }
+.hz-nd  { color: #7d8590; font-style: italic; font-weight: 700; }
+.hz-red { color: #f85149 !important; }
 .empty-state { text-align: center; color: #7d8590; padding: 20px; font-size: 14px; }
 .list-item { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; padding: 11px 0; border-bottom: 1px solid #30363d; }
 .list-item:last-child { border-bottom: none; }
@@ -339,6 +351,11 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <div class="mcvalue" id="h-dias" style="color:#e3b341">...</div>
       <div class="mcsub">del mes</div>
     </div>
+  </div>
+  <!-- Cómo estoy (Horizonte): sólo el dueño; los datos vienen de getHorizonte -->
+  <div class="card hz-card" id="hz-card" style="display:none">
+    <div class="hz-head"><div class="stitle">Cómo estoy</div><div class="hz-fecha" id="hz-fecha"></div></div>
+    <div id="hz-body"></div>
   </div>
   <div class="card">
     <div class="stitle">Ultimos gastos</div>
@@ -1862,6 +1879,123 @@ function renderHoy() {
   var le = document.getElementById('h-list');
   if (!exps.length) { le.innerHTML='<div class="empty-state">Sin gastos registrados aun</div>'; }
   else { var last=exps.slice(-5).reverse(); var html=''; for(var j=0;j<last.length;j++) html+=expHtml(last[j],false); le.innerHTML=html; }
+  renderHorizonte();
+}
+
+// ============================================================
+// CÓMO ESTOY (Horizonte) — sólo con el PIN del dueño
+// ============================================================
+// El backend (getHorizonte) le pide los datos al lector de Horizonte del lado
+// del servidor: el token del lector nunca llega a esta página.
+// Si un dato falta se muestra "sin dato", nunca un 0.
+var HZ = { estado: 'nada', data: null, error: '', pedidoEn: 0 };
+var HZ_REFRESCO = 5 * 60000;
+
+function loadHorizonte(force) {
+  if (!USE_API || !isFullAccess() || !getToken() || HZ.estado === 'cargando') return;
+  if (!force && HZ.pedidoEn && Date.now() - HZ.pedidoEn < HZ_REFRESCO) return;   // con dato o con error: no reintenta solo
+  HZ.estado = 'cargando'; HZ.pedidoEn = Date.now();
+  var dot = document.getElementById('sync-dot'), dotAntes = dot ? dot.className : '';
+  callAPI({ clientId: CLIENT_ID, action: 'getHorizonte', token: getToken() }, function(err, data) {
+    if (!err && data && data.ok) { HZ.estado = 'ok'; HZ.data = data; HZ.error = ''; }
+    else {
+      HZ.estado = 'error'; HZ.error = err ? err.message : ((data && data.error) || 'sin respuesta');
+      if (dot) dot.className = dotAntes;   // si Horizonte no responde, el punto del panel no se pone rojo
+    }
+    renderHorizonte();
+  }, 30000);
+}
+
+function hzMoney(n) { return (n < 0 ? '&minus; ' : '') + fmtMoney(n); }
+function hzCuando(o) {
+  if (!o || o.dias === null || o.dias === undefined) return o && o.vence ? o.vence : '';
+  if (o.dias < 0) return o.vence + ' <span class="hz-red">(vencida)</span>';
+  if (o.dias === 0) return 'hoy ' + o.vence.slice(-5);
+  if (o.dias === 1) return 'mañana ' + o.vence.slice(-5);
+  return o.vence;
+}
+function hzFechaDato(d) {
+  if (!d || !d.dato_de) return '';
+  var f = d.dato_de, hoyK = dateKey(new Date());
+  var txt = f.slice(0, 10) === hoyK ? 'dato de las ' + f.slice(11, 16)
+                                    : 'dato del ' + f.slice(8, 10) + '/' + f.slice(5, 7) + ' ' + f.slice(11, 16);
+  return d.atrasado ? txt + ' · Horizonte no respondió' : txt;
+}
+var HZ_ND = '<span class="hz-nd">sin dato</span>';
+
+function renderHorizonte() {
+  var card = document.getElementById('hz-card');
+  if (!card) return;
+  if (isExView() || !USE_API) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var body = document.getElementById('hz-body'), fe = document.getElementById('hz-fecha');
+  if (isLocked()) {
+    HZ = { estado: 'nada', data: null, error: '', pedidoEn: 0 };   // al ocultar no queda nada en pantalla
+    fe.innerHTML = ''; fe.className = 'hz-fecha';
+    body.innerHTML = '<div class="hz-libre" style="border-bottom:none;padding-bottom:0"><div class="mclabel">Te queda libre este mes</div>' +
+      '<div class="hz-big" style="color:#7d8590" onclick="handleEye()">&#9679;&#9679;&#9679;&#9679;&#9679;</div>' +
+      '<div class="hz-sub">tocá el 👁 para ver cómo estás</div></div>';
+    return;
+  }
+  loadHorizonte(false);
+  var d = HZ.data;
+  if (!d) {
+    fe.innerHTML = '';
+    body.innerHTML = HZ.estado === 'error'
+      ? '<div class="hz-val">' + HZ_ND + '</div><div class="hz-sub">Horizonte no respondió (' + HZ.error + '). ' +
+        '<a href="#" onclick="loadHorizonte(true);return false" style="color:#e3b341">Reintentar</a></div>'
+      : '<div class="hz-sub">&#128260; Trayendo los números de Horizonte...</div>';
+    return;
+  }
+  fe.innerHTML = hzFechaDato(d); fe.className = 'hz-fecha' + (d.atrasado ? ' atr' : '');
+
+  // 1. Libre
+  var L = d.libre, h = '<div class="hz-libre"><div class="mclabel">Te queda libre este mes</div>';
+  if (L) {
+    var col = L.ars < 0 ? '#f85149' : (L.por_dia < 5000 ? '#e3b341' : '#3fb950');
+    h += '<div class="hz-big" style="color:' + col + '">' + hzMoney(L.ars) + '</div>' +
+         '<div class="hz-sub">' + (L.ars < 0 ? 'faltan ' + fmtMoney(L.por_dia) + ' por día'
+                                             : '≈ ' + fmtMoney(L.por_dia) + ' por día') +
+         ' · ' + L.dias + ' días' + (L.sin_plata_guardada ? ' · sin contar la plata guardada' : '') + '</div>';
+  } else h += '<div class="hz-big">' + HZ_ND + '</div>';
+  h += '</div>';
+
+  // 2. Lo próximo que sale
+  var p = d.proximo;
+  h += '<div class="hz-row"><div class="mclabel">Lo próximo que sale</div><div class="hz-val">';
+  if (!p) h += HZ_ND;
+  else if (p.nada) h += 'Nada pendiente este mes';
+  else h += p.nombre + ' ' + (p.debito ? 'se debita' : 'vence') + ' <b>' + (p.estimado ? '≈ ' : '') + fmtMoney(p.ars) + '</b> · ' + hzCuando(p);
+  h += '</div></div>';
+
+  // 3. Tarjeta abierta
+  var t = d.tarjeta;
+  h += '<div class="hz-row"><div class="mclabel">Tarjeta abierta</div><div class="hz-val">';
+  if (!t) h += HZ_ND + '</div>';
+  else {
+    h += t.nombre + ' lleva <b>' + fmtMoney(t.ars) + '</b>' + (t.usd > 0 ? ' + ' + fmtUsd(t.usd) : '') +
+         ' · cierra ' + (t.cierre_estimado ? '≈ ' : '') + t.cierra + '</div><div class="hz-sub">';
+    var subs = [];
+    if (t.dias_al_cierre !== null && t.dias_al_cierre !== undefined && t.dias_al_cierre >= 0)
+      subs.push(t.dias_al_cierre === 0 ? 'cierra hoy' : 'faltan ' + t.dias_al_cierre + ' días');
+    if (t.estimado_cierre_ars !== null) subs.push('≈ ' + fmtMoney(t.estimado_cierre_ars) + ' al cierre');
+    if (t.vence) subs.push('se paga ' + t.vence);
+    h += subs.join(' · ') + '</div>';
+  }
+  h += '</div>';
+
+  // 4. Por pagar este mes
+  var o = d.obligaciones;
+  h += '<div class="hz-row"><div class="mclabel">Por pagar este mes</div><div class="hz-val">';
+  if (!o) h += HZ_ND + '</div>';
+  else if (!o.faltan) h += 'Todo pago · ' + o.pagadas + ' de ' + o.total + '</div>';
+  else {
+    h += 'Faltan <b>' + o.faltan + '</b> de ' + o.total + ' · ' + fmtMoney(o.por_pagar_ars) + '</div>';
+    if (o.proxima) h += '<div class="hz-sub">próxima: ' + o.proxima.nombre + ' ' + (o.proxima.estimado ? '≈ ' : '') +
+                        fmtMoney(o.proxima.ars) + ' · ' + hzCuando(o.proxima) + '</div>';
+  }
+  h += '</div>';
+  body.innerHTML = h;
 }
 
 // ============================================================
