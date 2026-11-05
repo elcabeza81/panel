@@ -1956,7 +1956,10 @@ function renderHorizonte() {
     h += '<div class="hz-big" style="color:' + col + '">' + hzMoney(L.ars) + '</div>' +
          '<div class="hz-sub">' + (L.ars < 0 ? 'faltan ' + fmtMoney(L.por_dia) + ' por día'
                                              : '≈ ' + fmtMoney(L.por_dia) + ' por día') +
-         ' · ' + L.dias + ' días' + (L.sin_plata_guardada ? ' · sin contar la plata guardada' : '') + '</div>';
+         ' · ' + L.dias + ' días' + (L.sin_plata_guardada ? ' · sin contar la plata guardada' : '') +
+         (!L.sin_plata_guardada && L.plata_guardada_del_mes === false && L.plata_guardada_mes
+           ? ' · <span style="color:#e3b341">plata guardada de ' + MONTHS[+L.plata_guardada_mes.slice(5, 7) - 1].toLowerCase() + ', sin confirmar este mes</span>' : '') +
+         '</div>';
   } else h += '<div class="hz-big">' + HZ_ND + '</div>';
   h += '</div>';
 

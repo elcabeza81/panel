@@ -1415,9 +1415,10 @@ function restaurarCustodia20261019() {
 // Script Properties (las carga Juanma, nadie más las ve):
 //   HORIZONTE_LECTOR_URL     URL /exec del lector de Horizonte (lectura_ha)
 //   HORIZONTE_LECTOR_TOKEN   el mismo token que usa Home Assistant (HA_TOKEN del lector)
-//   HORIZONTE_PLATA_GUARDADA (opcional) la "plata guardada" que se carga en el
-//                            tablero de HA. Vive sólo en HA, no en la planilla.
-//                            Si no está, el Libre se calcula sin ella y lo dice.
+//
+// La "plata guardada" se carga en el tablero de HA; HA la copia en la planilla
+// (escritor v2.3) y el lector v2.3 la devuelve en `plata_guardada`. Si el lector
+// todavía no la trae, el Libre se calcula sin ella y lo dice.
 //
 // Libre = caja del panel (getResumen) + plata guardada + lo que entró este mes
 //         aparte del acuerdo (extras y sueldo) − obligaciones del mes (reserva)
@@ -1503,8 +1504,9 @@ function hzArmar(ss, clientId) {
   var fijos   = gf.error ? null : hzNum(gf.total_ars);
   var entro   = (periodoOk && !ing.error && hzNum(ing.otros_ars) !== null && hzNum(ing.sueldo_ars) !== null)
                 ? ing.otros_ars + ing.sueldo_ars : null;
-  var gProp   = PropertiesService.getScriptProperties().getProperty('HORIZONTE_PLATA_GUARDADA');
-  var guardada = (gProp !== null && gProp !== '' && isFinite(+gProp)) ? +gProp : null;
+  var pg      = L.plata_guardada || {};
+  var guardada = (pg.disponible === true) ? hzNum(pg.importe_ars) : null;
+  if (guardada === null) out.faltan.push('libre: el lector no trae la plata guardada (' + (pg.error || pg.motivo || 'lector anterior a v2.3') + ')');
   if (caja === null)  out.faltan.push('libre: falta la caja del panel');
   if (fijos === null) out.faltan.push('libre: faltan los gastos fijos');
   if (entro === null) out.faltan.push('libre: faltan los ingresos del mes');
@@ -1516,7 +1518,9 @@ function hzArmar(ss, clientId) {
       ars: libre, por_dia: Math.round(libre / dias), dias: dias,
       caja: Math.round(caja), plata_guardada: guardada, entro: Math.round(entro),
       obligaciones: Math.round(reserva), gastos_fijos: Math.round(fijos),
-      sin_plata_guardada: guardada === null
+      sin_plata_guardada: guardada === null,
+      plata_guardada_mes: guardada === null ? '' : pg.periodo,
+      plata_guardada_del_mes: guardada !== null && pg.del_mes === true    // false = todavía no se confirmó este mes
     };
   }
 
