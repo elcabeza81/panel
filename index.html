@@ -231,6 +231,14 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 .hist-count { font-size: 11px; color: #7d8590; padding-bottom: 4px; border-bottom: 1px solid #30363d; }
 .hist-prev { font-size: 11px; color: #7d8590; }
 .hist-more { width: 100%; margin-top: 8px; }
+.ap-prev { display: -webkit-grid; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.ap-day { border-radius: 6px; padding: 4px 2px; text-align: center; line-height: 1.25; }
+.ap-day span { display: block; }
+.ap-p { background: rgba(88,166,255,0.15); color: #58a6ff; }
+.ap-m { background: rgba(247,120,161,0.15); color: #f778a1; }
+.ap-dw { font-size: 10px; font-weight: 800; text-transform: uppercase; opacity: .85; }
+.ap-dd { font-size: 10px; color: #7d8590; }
+.ap-who { font-size: 10px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .outbox-bar { margin: 0 0 8px 0; padding: 8px 12px; border-radius: 10px; background: rgba(227,179,65,0.12); border: 1px solid rgba(227,179,65,0.45); color: #e3b341; font-size: 13px; font-weight: 800; }
 .outbox-bar.warn { background: rgba(248,81,73,0.12); border-color: rgba(248,81,73,0.5); color: #f85149; }
 .ob-btn { margin-left: 8px; background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 8px; padding: 3px 10px; font-family: inherit; font-weight: 800; font-size: 12px; cursor: pointer; }
@@ -510,6 +518,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
   </div>
   <div style="margin-top:8px">
     <button class="setbtn" onclick="openApplyAgreement()" style="width:100%;border-color:#3fb950;color:#3fb950">&#9851; Aplicar acuerdo desde un día</button>
+    <button class="setbtn" id="undo-cal-btn" onclick="undoCalendar()" style="width:100%;margin-top:8px;border-color:#e3b341;color:#e3b341;display:none"></button>
   </div>
 
   <!-- EVENTOS DEL MES (calendario Familia) -->
@@ -542,7 +551,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 <div id="apply-ov" class="overlay">
   <div class="mbox" style="width:320px">
     <div class="mtitle">Aplicar acuerdo desde un día</div>
-    <div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">El ciclo de 14 días se reinicia en la fecha que elijas y rige de ahí en adelante. <b>Nada anterior a esa fecha se toca.</b></div>
+    <div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">Desde la fecha que elijas rige el 2-2-3 (lun-mar / mié-jue / vie-sáb-dom). <b>Nada anterior a esa fecha se toca.</b> Antes de aplicar vas a ver una vista previa.</div>
     <div style="font-size:12px;color:#7d8590;margin-bottom:5px">Primer día del acuerdo</div>
     <div class="daterow">
       <select id="apply-d" class="dsel" onchange="onApplyDateChange()"></select>
@@ -550,7 +559,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
       <select id="apply-y" class="dsel" style="-webkit-flex:1.2;flex:1.2" onchange="onApplyDateChange()"></select>
     </div>
     <div id="apply-date-echo"></div>
-    <div style="font-size:12px;color:#7d8590;margin:12px 0 5px">Ese día arranca con</div>
+    <div style="font-size:12px;color:#7d8590;margin:12px 0 5px">Ese día las nenas están con</div>
     <div class="whorow">
       <button type="button" id="apply-who-papa" class="whobtn" onclick="setApplyWho('papa')">Papá</button>
       <button type="button" id="apply-who-mama" class="whobtn" onclick="setApplyWho('mama')">Mamá</button>
@@ -566,7 +575,7 @@ body { background: #0d1117; color: #e6edf3; font-family: 'Nunito', sans-serif; m
 <!-- MODAL APLICAR ACUERDO: revisar conflictos -->
 <div id="apply-review-ov" class="overlay">
   <div class="mbox" style="width:340px;text-align:left;max-height:80vh;overflow-y:auto">
-    <div class="mtitle">Revisá los cambios manuales</div>
+    <div class="mtitle">Vista previa del acuerdo</div>
     <div id="apply-review-body"></div>
     <div class="mbtns" style="margin-top:14px">
       <button class="mbtn-c" onclick="closeApplyReview()">Cancelar</button>
@@ -717,7 +726,7 @@ function clearToken() {
 // Extiende callAPI para inyectar token automáticamente en escrituras
 var WRITE_ACTIONS = {
   addExp:1, delExp:1, clearMonth:1, setBudget:1, setBudgetType:1, setOverride:1,
-  setOverridesBulk:1, applyAgreement:1,
+  setOverridesBulk:1, applyAgreement:1, undoCalendar:1,
   resetOverrides:1, addRem:1, delRem:1, saveShopping:1,
   setShareShop:1, setPanelUi:1, logout:1
 };
@@ -740,7 +749,7 @@ var privTimer  = null;
 var currentPayment = 'efectivo';
 
 var C = {
-  expenses: [], budget: 3000000, budgetType: 'efectivo', overrides: {}, cycleAnchor: null, reminders: [],
+  expenses: [], budget: 3000000, budgetType: 'efectivo', overrides: {}, cycleAnchors: [], calendarUndo: null, reminders: [],
   shoppingList: [], shareShopping: true,
   events: [], eventExtras: {}, overrideHistory: [],
   panelUi: {
@@ -926,7 +935,8 @@ function loadAll() {
       C.budgetType = data.budgetType || 'efectivo';
       if (!calViejo) {
         C.overrides  = data.overrides  || {};
-        C.cycleAnchor = (data.cycleAnchor && data.cycleAnchor.date) ? data.cycleAnchor : null;
+        C.cycleAnchors = normAnclas(data.cycleAnchors !== undefined ? data.cycleAnchors : (data.cycleAnchor ? [data.cycleAnchor] : []));
+        C.calendarUndo = (data.calendarUndo && data.calendarUndo.tipo) ? data.calendarUndo : null;
       }
       mergeShoppingFromServer(data.shoppingList);
       C.shareShopping = data.shareShopping !== false;
@@ -1017,10 +1027,13 @@ function obApplyPending() {
     if (op.action === 'setOverride' && p.date && p.who) {
       C.overrides[p.date] = p.who;
     } else if (op.action === 'applyAgreement' && p.from) {
-      C.cycleAnchor = { date: p.from, who: p.who };
+      C.cycleAnchors = anclasCon(C.cycleAnchors, p.from, p.who);
       try { var d = JSON.parse(p.drop || '[]'); for (var j = 0; j < d.length; j++) delete C.overrides[d[j]]; } catch (e) {}
+      C.calendarUndo = { tipo: 'acuerdo', from: p.from, who: p.who };
     } else if (op.action === 'resetOverrides') {
-      C.overrides = {}; C.cycleAnchor = null;
+      C.overrides = {}; C.cycleAnchors = []; C.calendarUndo = { tipo: 'reset' };
+    } else if (op.action === 'undoCalendar') {
+      C.calendarUndo = null;               // ya pedido: no ofrecer deshacer otra vez
     }
   }
 }
@@ -1090,8 +1103,12 @@ function fromLocal() {
   var bt = localStorage.getItem('budgetType'); if (bt) C.budgetType = bt;
   var e = localStorage.getItem(storKey());  if (e) { try { C.expenses  = JSON.parse(e); } catch(x) {} }
   var o = localStorage.getItem('cust_ov'); if (o) { try { C.overrides = JSON.parse(o); } catch(x) {} }
-  var ca = localStorage.getItem('cycle_anchor');
-  if (ca) { try { var _pa = JSON.parse(ca); C.cycleAnchor = (_pa && _pa.date) ? _pa : null; } catch(x) { C.cycleAnchor = null; } }
+  var cas = localStorage.getItem('cycle_anchors');
+  if (cas) { try { C.cycleAnchors = normAnclas(JSON.parse(cas)); } catch(x) { C.cycleAnchors = []; } }
+  else {
+    var ca = localStorage.getItem('cycle_anchor');      // dato guardado por la versión anterior
+    if (ca) { try { var _pa = JSON.parse(ca); C.cycleAnchors = (_pa && _pa.date) ? normAnclas([_pa]) : []; } catch(x) { C.cycleAnchors = []; } }
+  }
   var sl = localStorage.getItem('shopping_list'); if (sl) { try { C.shoppingList = JSON.parse(sl); } catch(x) {} }
   var ss = localStorage.getItem('share_shopping'); if (ss !== null) C.shareShopping = ss === 'true';
   var pu = localStorage.getItem('panel_ui'); if (pu) { try { C.panelUi = mergeUi(JSON.parse(pu)); } catch(x) {} }
@@ -1103,7 +1120,7 @@ function toLocal() {
   localStorage.setItem('budgetType', '' + (C.budgetType || 'efectivo'));
   localStorage.setItem(storKey(), JSON.stringify(C.expenses));
   localStorage.setItem('cust_ov', JSON.stringify(C.overrides));
-  localStorage.setItem('cycle_anchor', C.cycleAnchor ? JSON.stringify(C.cycleAnchor) : '');
+  localStorage.setItem('cycle_anchors', JSON.stringify(C.cycleAnchors || []));
   localStorage.setItem('rems',    JSON.stringify(C.reminders));
   localStorage.setItem('shopping_list', JSON.stringify(C.shoppingList || []));
   localStorage.setItem('share_shopping', C.shareShopping ? 'true' : 'false');
@@ -1114,6 +1131,7 @@ function renderAll() {
   renderHoy();
   renderBudget();
   renderCal();
+  renderUndoBtn();
   if (document.getElementById('v-lista').className.indexOf('act') >= 0) renderLista();
 }
 
@@ -1209,26 +1227,54 @@ function dsToDate(ds) {
   return new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10));
 }
 
-// Patron del acuerdo (sin contar cambios manuales) para una fecha.
-// Si hay un ancla configurada y la fecha es >= al ancla, el ciclo de 14 dias
-// se re-fasea desde ahi; si el acuerdo arranca con papa, el patron se espeja
-// (CYCLE[0] es 'mama'). Antes del ancla, o sin ancla, rige el esquema original.
-function patternWithAnchor(ds, anchor) {
+// ── Acuerdos 2-2-3 ───────────────────────────────────────────
+// CYCLE arranca un VIERNES (CYCLE_START): vie-sáb-dom / lun-mar / mié-jue,
+// y la semana siguiente lo mismo con el otro progenitor.
+// C.cycleAnchors es una lista ordenada de acuerdos {date, who}: cada uno rige
+// desde su fecha hasta la del siguiente (aplicar uno nuevo no toca lo anterior).
+// El ciclo SIEMPRE queda alineado a los días de la semana; 'who' es quien tiene
+// a las nenas ESE primer día. Antes del primer acuerdo rige el esquema original.
+function normAnclas(lst) {
+  var out = [];
+  if (!(lst instanceof Array)) return out;
+  for (var i = 0; i < lst.length; i++) {
+    var a = lst[i];
+    if (a && /^\d{4}-\d{2}-\d{2}$/.test('' + a.date) && (a.who === 'papa' || a.who === 'mama')) out.push({ date: '' + a.date, who: a.who });
+  }
+  out.sort(function(x, y) { return x.date < y.date ? -1 : (x.date > y.date ? 1 : 0); });
+  return out;
+}
+// Lista resultante de aplicar un acuerdo desde 'from': lo anterior queda igual
+function anclasCon(anclas, from, who) {
+  var out = [];
+  for (var i = 0; i < (anclas || []).length; i++) { if (anclas[i].date < from) out.push(anclas[i]); }
+  out.push({ date: from, who: who });
+  return out;
+}
+function anclaVigente(anclas, ds) {
+  var r = null;
+  for (var i = 0; i < (anclas || []).length; i++) { if (anclas[i].date <= ds) r = anclas[i]; }
+  return r;
+}
+// Posición del ciclo (0..13) en la fecha del acuerdo, alineada a la semana
+function faseAncla(a) {
+  var k = ((dsToDate(a.date).getDay() - 5) % 7 + 7) % 7;   // vie=0 ... jue=6
+  return CYCLE[k] === a.who ? k : k + 7;
+}
+// Patrón del acuerdo (sin contar cambios manuales) para una fecha
+function patternWithAnchors(ds, anclas) {
   var d = dsToDate(ds);
-  if (anchor && anchor.date) {
-    var dd = Math.round((d.getTime() - dsToDate(anchor.date).getTime()) / 86400000);
-    if (dd >= 0) {
-      var slot = CYCLE[((dd % 14) + 14) % 14];
-      if (anchor.who === 'papa') return slot === 'mama' ? 'papa' : 'mama';
-      return slot;
-    }
+  var a = anclaVigente(anclas, ds);
+  if (a) {
+    var dd = Math.round((d.getTime() - dsToDate(a.date).getTime()) / 86400000);
+    return CYCLE[(faseAncla(a) + dd) % 14];
   }
   var diff = Math.round((d.getTime() - CYCLE_START) / 86400000);
   if (diff < 0) return null;
   return CYCLE[((diff % 14) + 14) % 14];
 }
 
-function agreementFor(ds) { return patternWithAnchor(ds, C.cycleAnchor); }
+function agreementFor(ds) { return patternWithAnchors(ds, C.cycleAnchors); }
 
 function getCustody(ds) {
   if (C.overrides[ds]) return C.overrides[ds];
@@ -1353,9 +1399,42 @@ function resetCal() {
 }
 function doResetCal() {
   C.overrides = {};
-  C.cycleAnchor = null;   // vuelve al esquema original
-  toLocal(); renderCal(); renderHoy();
+  C.cycleAnchors = [];   // vuelve al esquema original
+  toLocal(); renderCal(); renderHoy(); renderUndoBtn();
   if (USE_API) obPush('resetOverrides', {});
+}
+
+// ── Deshacer el último "Aplicar acuerdo" / "Restaurar calendario" ──
+function renderUndoBtn() {
+  var b = document.getElementById('undo-cal-btn');
+  if (!b) return;
+  var u = C.calendarUndo;
+  if (!u || !USE_API) { b.style.display = 'none'; return; }
+  b.style.display = '';
+  b.innerHTML = '&#8630; Deshacer ' + (u.tipo === 'reset'
+    ? '"Restaurar calendario"'
+    : 'acuerdo aplicado desde el ' + fmtDMY(u.from));
+}
+function undoCalendar() {
+  var u = C.calendarUndo;
+  if (!u) return;
+  var txt = u.tipo === 'reset' ? 'el "Restaurar calendario"' : 'el acuerdo aplicado desde el ' + fmtDMY(u.from);
+  if (!confirm('¿Deshacer ' + txt + '? Vuelve todo a como estaba antes de aplicarlo.')) return;
+  function hacer() {
+    C.calendarUndo = null; renderUndoBtn();
+    obPush('undoCalendar', {});
+    showBanner('Deshaciendo… en unos segundos se actualiza el calendario.');
+  }
+  if (isLocked() && USE_API) {
+    var v = prompt('Ingresá tu PIN para deshacer:');
+    if (!v) return;
+    callAPI({ clientId: CLIENT_ID, action: 'validatePin', pin: v }, function(err, data) {
+      if (!err && data && data.mode) { if (data.token) setToken(data.token); applyViewMode(data.mode); hacer(); }
+      else showBanner('PIN incorrecto');
+    });
+    return;
+  }
+  hacer();
 }
 
 // ── Aplicar acuerdo desde un día (re-ancla el ciclo de 14 días) ──
@@ -1483,40 +1562,71 @@ function computeApplyInner() {
   }
   closeApplyDate();
 
-  var anchor = { date: fromDate, who: _applyWho };
+  var nuevas = anclasCon(C.cycleAnchors, fromDate, _applyWho);
   // Barrido hacia adelante: sólo cambios manuales desde la fecha elegida que
   // ahora chocan con el acuerdo nuevo. Lo anterior a fromDate no se toca.
   var conflicts = [];
+  var cambian = 0, libres = 0, hasta = '';
   var d = dsToDate(fromDate);
   var endTs = d.getTime() + 730 * 86400000; // ~2 años
+  var finResumen = d.getTime() + 89 * 86400000; // resumen: próximos 90 días
   while (d.getTime() <= endTs) {
     var dk = dateKey(d);
-    if (C.overrides[dk]) {
-      var base = patternWithAnchor(dk, anchor);
-      if (base && C.overrides[dk] !== base) {
-        conflicts.push({ date: dk, current: C.overrides[dk], base: base, drop: false });
-      }
+    var base = patternWithAnchors(dk, nuevas);
+    if (d.getTime() <= finResumen) {
+      if (!C.overrides[dk]) { libres++; if (base !== agreementFor(dk)) cambian++; }
+      hasta = dk;
+    }
+    if (C.overrides[dk] && base && C.overrides[dk] !== base) {
+      conflicts.push({ date: dk, current: C.overrides[dk], base: base, drop: false });
     }
     d.setDate(d.getDate() + 1);
   }
 
-  _applyChanges = { from: fromDate, who: _applyWho, anchor: anchor, conflicts: conflicts };
-  if (conflicts.length === 0) { doApplyAgreement(); return; }   // nada que revisar: aplicar ya
-  renderApplyReview();
+  _applyChanges = { from: fromDate, who: _applyWho, anchors: nuevas, conflicts: conflicts, cambian: cambian, libres: libres, hasta: hasta };
+  renderApplyReview();      // SIEMPRE se muestra la vista previa antes de aplicar
+}
+
+// Vista previa: las 2 primeras semanas del acuerdo nuevo, día por día
+function previewAcuerdoHtml(a) {
+  var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
+  var h = '<div class="ap-prev">';
+  var d = dsToDate(a.from);
+  for (var i = 0; i < 14; i++) {
+    var dk = dateKey(d);
+    var w = patternWithAnchors(dk, a.anchors);
+    h += '<div class="ap-day ' + (w === 'papa' ? 'ap-p' : 'ap-m') + '">' +
+         '<span class="ap-dw">' + DAYS[d.getDay()].substring(0, 3) + '</span>' +
+         '<span class="ap-dd">' + pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '</span>' +
+         '<span class="ap-who">' + (w === 'papa' ? papa : mama) + '</span></div>';
+    d.setDate(d.getDate() + 1);
+  }
+  return h + '</div>';
 }
 
 function renderApplyReview() {
   var box = document.getElementById('apply-review-body');
-  var cf = _applyChanges.conflicts;
+  var a = _applyChanges;
+  var cf = a.conflicts;
   var papa = (C.panelUi.papaName || 'Papá'); var mama = (C.panelUi.mamaName || 'Mamá');
   var nom = function(w) { return w === 'papa' ? papa : mama; };
-  var pf = _applyChanges.from.split('-');
-  var html = '<div style="font-size:13px;color:#7d8590;margin-bottom:12px;line-height:1.5">' +
-    'El acuerdo va a regir desde el <b>' + pf[2] + '/' + pf[1] + '/' + pf[0] + '</b>, arrancando con <b>' + nom(_applyChanges.who) + '</b>.<br>' +
+  var dia = DAYS[dsToDate(a.from).getDay()].toLowerCase();
+  var html = '<div style="font-size:13px;color:#7d8590;margin-bottom:10px;line-height:1.5">' +
+    'Desde el <b>' + dia + ' ' + fmtDMY(a.from) + '</b> rige el 2-2-3 (lun-mar / mié-jue / vie-sáb-dom) ' +
+    'empezando con <b>' + nom(a.who) + '</b>.<br><b>Antes de esa fecha no cambia nada.</b></div>' +
+    previewAcuerdoHtml(a) +
+    '<div style="font-size:12px;color:#7d8590;margin:8px 0 12px">' +
+    (!a.cambian ? 'Comparado con lo que muestra hoy el calendario, <b>no cambia ningún día</b>.'
+     : (a.cambian === a.libres
+        ? 'Comparado con lo que muestra hoy el calendario, desde esa fecha <b>se invierte</b>: los días que figuran con ' + mama + ' pasan a ' + papa + ' y al revés (los cambios manuales se respetan).'
+        : 'Comparado con lo que muestra hoy el calendario, cambian <b>' + a.cambian + ' de los próximos ' + a.libres + ' días</b> (los cambios manuales se respetan).')) + '</div>';
+  if (cf.length) {
+    html += '<div style="font-size:13px;color:#7d8590;margin-bottom:10px;line-height:1.5">' +
     'Hay ' + cf.length + ' día(s) con cambios manuales que no coinciden. ' +
     '<b>Tildá los que quieras reemplazar</b> por el acuerdo; los que dejes sin tildar se conservan como están.</div>' +
     '<div style="margin-bottom:10px"><button class="mbtn-c" style="font-size:12px;padding:4px 10px" onclick="toggleAllApply(true)">Tildar todos</button> ' +
     '<button class="mbtn-c" style="font-size:12px;padding:4px 10px" onclick="toggleAllApply(false)">Ninguno</button></div>';
+  }
   for (var i = 0; i < cf.length; i++) {
     var c = cf[i];
     var parts = c.date.split('-');
@@ -1546,9 +1656,10 @@ function doApplyAgreement() {
   }
 
   // Aplicar local primero (la UI responde al toque, aunque la red falle)
-  C.cycleAnchor = { date: a.from, who: a.who };
+  C.cycleAnchors = anclasCon(C.cycleAnchors, a.from, a.who);
   for (var j = 0; j < drop.length; j++) delete C.overrides[drop[j]];
-  toLocal(); renderCal(); renderHoy();
+  C.calendarUndo = { tipo: 'acuerdo', from: a.from, who: a.who };
+  toLocal(); renderCal(); renderHoy(); renderUndoBtn();
 
   var resumen = 'Acuerdo aplicado desde ' + a.from.split('-').reverse().join('/') +
                 (drop.length ? ' · ' + drop.length + ' cambio(s) manual(es) reemplazado(s)' : '');
@@ -1599,8 +1710,13 @@ function renderHistory() {
     if (e.date === '*') {
       main = 'Calendario restaurado al esquema original';
     } else if (e.date === '#agreement') {
-      main = 'Acuerdo aplicado desde ' + fmtDMY(e.from || '') + ' (arranca ' + nom(e.who) + ')' +
+      main = (e.note === 'restauracion'
+               ? 'Acuerdo desde ' + fmtDMY(e.from || '') + ' restaurado (arranca ' + nom(e.who) + ')'
+               : 'Acuerdo aplicado desde ' + fmtDMY(e.from || '') + ' (arranca ' + nom(e.who) + ')') +
              (e.removed ? ' · ' + e.removed + ' cambio(s) manual(es) reemplazado(s)' : '');
+    } else if (e.date === '#undo') {
+      main = 'Deshecho: ' + (e.who === 'reset' ? '"Restaurar calendario"' : 'acuerdo desde ' + fmtDMY(e.from || '')) +
+             (e.removed ? ' · ' + e.removed + ' cambio(s) manual(es) repuesto(s)' : '');
     } else if (e.date === '#bulk') {
       main = e.note === 'restauracion'
         ? 'Restauración: ' + escHtml(e.who) + ' día(s) recuperados del historial de versiones'

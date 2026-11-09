@@ -121,6 +121,7 @@ function rutear(ss, p, act, clientId, mes) {
   else if (act === 'setOverridesBulk') res = setOverridesBulk(ss, clientId, p.changes, actorMode);
   else if (act === 'applyAgreement')   res = applyAgreement(ss, clientId, p, actorMode);
   else if (act === 'resetOverrides')   res = resetOverrides(ss, clientId, actorMode);
+  else if (act === 'undoCalendar')     res = undoCalendar(ss, clientId, actorMode);
   else if (act === 'addRem')           res = modRems(ss, clientId, 'add', p);
   else if (act === 'delRem')           res = modRems(ss, clientId, 'del', p);
   else if (act === 'setShareShop')     res = setConf(ss, clientId, 'share_shopping', p.value === 'true' ? 'true' : 'false');
@@ -353,7 +354,11 @@ function getAll(ss, clientId, month) {
   if (cfg.budget)         res.budget        = +cfg.budget || 3000000;
   if (cfg.budget_type && BUDGET_TYPES['' + cfg.budget_type]) res.budgetType = '' + cfg.budget_type;
   if (cfg.overrides)      { try { res.overrides     = JSON.parse(cfg.overrides)     || {}; } catch(x){} }
-  if (cfg.cycle_anchor)   { try { var _a = JSON.parse(cfg.cycle_anchor); res.cycleAnchor = (_a && _a.date) ? _a : null; } catch(x){ res.cycleAnchor = null; } }
+  // Acuerdos: lista completa (panel nuevo) + el vigente hoy (paneles viejos en caché)
+  res.cycleAnchors = leerAnclas(cfg);
+  res.cycleAnchor  = anclaVigente(res.cycleAnchors, hoyAR());
+  var _u = leerDeshacer(cfg);
+  res.calendarUndo = _u ? { tipo: _u.tipo, from: _u.from || '', who: _u.who || '', at: _u.at || 0, by: _u.by || '' } : null;
   if (cfg.reminders)      { try { res.reminders     = JSON.parse(cfg.reminders)     || []; } catch(x){} }
   if (cfg.shopping_list)  { try { res.shoppingList  = JSON.parse(cfg.shopping_list) || []; } catch(x){} }
   res.shareShopping = (cfg.share_shopping !== undefined) ? ('' + cfg.share_shopping) === 'true' : true;
@@ -448,47 +453,155 @@ function setOverridesBulk(ss, clientId, changesJson, actorMode) {
   return { ok: true, applied: n };
 }
 
-// Aplica el acuerdo base desde una fecha, re-anclando el ciclo de 14 dias.
+// ============================================================
+// ACUERDOS (anclas del ciclo 2-2-3)
+// ============================================================
+// Incidente 09/11/2026: había UN solo acuerdo guardado. Aplicar uno desde el
+// 18/01/2027 pisó el del 04/09/2026 y todas las semanas intermedias volvieron
+// al esquema viejo (invertidas). Además el ciclo se anclaba al día elegido sin
+// mirar el día de la semana: con un lunes, el bloque de 3 caía lun-mié.
+//
+// Ahora: 'cycle_anchors' es una LISTA ordenada de {date, who}. Cada acuerdo
+// rige desde su fecha hasta la del siguiente; aplicar uno nuevo sólo reemplaza
+// lo que hay desde su fecha en adelante. El ciclo siempre queda alineado a la
+// semana (vie-sáb-dom / lun-mar / mié-jue) y 'who' es quien tiene a las nenas
+// ESE primer día.
+function leerAnclas(cfg) {
+  var lst = [];
+  if (cfg.cycle_anchors !== undefined && cfg.cycle_anchors !== '') {
+    try { lst = JSON.parse(cfg.cycle_anchors) || []; } catch (e) { lst = []; }
+  } else if (cfg.cycle_anchor) {
+    try { var a = JSON.parse(cfg.cycle_anchor); if (a && a.date) lst = [a]; } catch (e) { lst = []; }
+  }
+  if (!Array.isArray(lst)) lst = [];
+  var out = [];
+  for (var i = 0; i < lst.length; i++) {
+    var x = lst[i];
+    if (x && /^\d{4}-\d{2}-\d{2}$/.test('' + x.date) && (x.who === 'papa' || x.who === 'mama')) out.push({ date: '' + x.date, who: x.who });
+  }
+  out.sort(function(a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  return out;
+}
+
+// El acuerdo que rige en la fecha ds (el último con fecha <= ds), o null
+function anclaVigente(anclas, ds) {
+  var r = null;
+  for (var i = 0; i < anclas.length; i++) { if (anclas[i].date <= ds) r = anclas[i]; }
+  return r;
+}
+
+function guardarAnclas(ss, clientId, anclas) {
+  setConf(ss, clientId, 'cycle_anchors', JSON.stringify(anclas));
+  // Compatibilidad con paneles viejos en caché: el acuerdo vigente hoy
+  var v = anclaVigente(anclas, hoyAR());
+  setConf(ss, clientId, 'cycle_anchor', v ? JSON.stringify(v) : '');
+}
+
+// Posición del ciclo (0..13) en la fecha del acuerdo: alineada a la semana
+// (TG_CYCLE arranca un viernes) y con 'who' ese primer día.
+function faseAncla(ancla) {
+  var k = ((tgDsToDate(ancla.date).getDay() - 5) % 7 + 7) % 7;   // vie=0 ... jue=6
+  return TG_CYCLE[k] === ancla.who ? k : k + 7;
+}
+
+// Quién tiene a las nenas según los acuerdos (sin cambios manuales)
+function patronAcuerdo(ds, anclas) {
+  var d = tgDsToDate(ds);
+  var a = anclaVigente(anclas || [], ds);
+  if (a) {
+    var dd = Math.round((d.getTime() - tgDsToDate(a.date).getTime()) / 86400000);
+    return TG_CYCLE[(faseAncla(a) + dd) % 14];
+  }
+  var diff = Math.round((d.getTime() - tgDsToDate(TG_CYCLE_START).getTime()) / 86400000);
+  if (diff < 0) return null;
+  return TG_CYCLE[((diff % 14) + 14) % 14];
+}
+
+// ── Deshacer la última operación grande del calendario ───────
+// Un nivel: el último "Aplicar acuerdo" o "Restaurar calendario".
+function leerDeshacer(cfg) {
+  if (!cfg.calendar_undo) return null;
+  try { var u = JSON.parse(cfg.calendar_undo); return (u && u.tipo) ? u : null; } catch (e) { return null; }
+}
+
+// Aplica un acuerdo desde una fecha.
 // - from: 'YYYY-MM-DD', primer dia del acuerdo
-// - who:  'papa' | 'mama', con quien arranca ese primer dia
+// - who:  'papa' | 'mama', quién tiene a las nenas ese primer día
 // - drop: JSON array de fechas cuyo cambio manual se descarta (vuelven al acuerdo)
-// Nunca toca fechas anteriores a 'from': el historico queda intacto.
+// Nunca toca nada anterior a 'from': ni acuerdos ni cambios manuales.
 function applyAgreement(ss, clientId, p, actorMode) {
   var from = '' + (p.from || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return { error: 'fecha invalida' };
   var who = (p.who === 'papa') ? 'papa' : 'mama';
+  var continuacion = ('' + (p.nolog || '')) === '1';   // tandas 2..n del mismo acuerdo
 
   var drop = [];
   try { drop = JSON.parse(p.drop || '[]') || []; } catch (e) { drop = []; }
-  if (!(drop instanceof Array)) drop = [];
+  if (!Array.isArray(drop)) drop = [];
 
   var cfg = readConfig(ss, clientId);
   var ov  = {};
   try { ov = JSON.parse(cfg.overrides || '{}') || {}; } catch (x) {}
 
-  var removed = 0;
+  var removed = 0, quitados = {};
   for (var i = 0; i < drop.length; i++) {
     var dk = '' + drop[i];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
     if (dk < from) continue;                       // blindaje: jamas hacia atras
-    if (ov.hasOwnProperty(dk)) { delete ov[dk]; removed++; }
+    if (ov.hasOwnProperty(dk)) { quitados[dk] = ov[dk]; delete ov[dk]; removed++; }
   }
+
+  var anclas = leerAnclas(cfg);
+  var undo = continuacion ? leerDeshacer(cfg) : null;
+  if (!undo || undo.tipo !== 'acuerdo' || undo.from !== from) {
+    undo = { tipo: 'acuerdo', at: Date.now(), by: actorMode === 'ex' ? 'ex' : 'owner',
+             from: from, who: who, anclasPrevias: anclas, quitados: {} };
+  }
+  for (var q in quitados) { if (quitados.hasOwnProperty(q)) undo.quitados[q] = quitados[q]; }
+
+  var nuevas = [];
+  for (var j = 0; j < anclas.length; j++) { if (anclas[j].date < from) nuevas.push(anclas[j]); }
+  nuevas.push({ date: from, who: who });
 
   setConf(ss, clientId, 'overrides', JSON.stringify(ov));
-  setConf(ss, clientId, 'cycle_anchor', JSON.stringify({ date: from, who: who }));
+  guardarAnclas(ss, clientId, nuevas);
+  setConf(ss, clientId, 'calendar_undo', JSON.stringify(undo));
 
-  // nolog='1' lo usan los envios por tandas para no duplicar el historial
-  if (('' + (p.nolog || '')) !== '1') {
-    registrarHistorial(ss, clientId, '#agreement', '', who, actorMode, true, from, removed);
-  }
-  return { ok: true, removed: removed, anchor: { date: from, who: who } };
+  if (!continuacion) registrarHistorial(ss, clientId, '#agreement', '', who, actorMode, true, from, removed);
+  return { ok: true, removed: removed, anchor: { date: from, who: who }, anchors: nuevas };
 }
 
+// "Restaurar calendario original": guarda todo para poder deshacerlo.
 function resetOverrides(ss, clientId, actorMode) {
+  var cfg = readConfig(ss, clientId);
+  var ov  = {};
+  try { ov = JSON.parse(cfg.overrides || '{}') || {}; } catch (x) {}
+  setConf(ss, clientId, 'calendar_undo', JSON.stringify({ tipo: 'reset', at: Date.now(),
+    by: actorMode === 'ex' ? 'ex' : 'owner', anclasPrevias: leerAnclas(cfg), quitados: ov }));
   setConf(ss, clientId, 'overrides', '{}');
-  setConf(ss, clientId, 'cycle_anchor', '');   // vuelve al esquema original
+  guardarAnclas(ss, clientId, []);                // vuelve al esquema original
   registrarHistorial(ss, clientId, '*', '', 'reset', actorMode);
   return { ok: true };
+}
+
+// Deshace el último "Aplicar acuerdo" o "Restaurar calendario". Los cambios
+// manuales hechos DESPUÉS se respetan (no se pisan con lo viejo).
+function undoCalendar(ss, clientId, actorMode) {
+  var cfg = readConfig(ss, clientId);
+  var u = leerDeshacer(cfg);
+  if (!u) return { error: 'no hay nada para deshacer' };
+  var ov = {};
+  try { ov = JSON.parse(cfg.overrides || '{}') || {}; } catch (x) {}
+  var repuestos = 0, k;
+  var q = u.quitados || {};
+  for (k in q) {
+    if (q.hasOwnProperty(k) && !ov.hasOwnProperty(k)) { ov[k] = q[k]; repuestos++; }
+  }
+  setConf(ss, clientId, 'overrides', JSON.stringify(ov));
+  guardarAnclas(ss, clientId, leerAnclas({ cycle_anchors: JSON.stringify(u.anclasPrevias || []) }));
+  setConf(ss, clientId, 'calendar_undo', '');
+  registrarHistorial(ss, clientId, '#undo', '', u.tipo, actorMode, true, u.from || '', repuestos);
+  return { ok: true, tipo: u.tipo, repuestos: repuestos };
 }
 
 // ============================================================
@@ -928,17 +1041,15 @@ function tgSend(text) {
 function tgPad2(n) { return n < 10 ? '0' + n : '' + n; }
 function tgDateKey(d) { return Utilities.formatDate(d, 'America/Argentina/Buenos_Aires', 'yyyy-MM-dd'); }
 
-// Ancla del acuerdo vigente ({date, who}); la carga tgGetOverrides() junto con los overrides.
-var TG_ANCHOR = null;
+// Acuerdos vigentes (lista {date, who}); los carga tgGetOverrides() junto con los overrides.
+var TG_ANCLAS = [];
 
 function tgGetOverrides() {
-  TG_ANCHOR = null;
+  TG_ANCLAS = [];
   try {
     var ss  = SpreadsheetApp.openById(SS_ID);
     var cfg = readConfig(ss, TG_CLIENT_ID);
-    if (cfg.cycle_anchor) {
-      try { var a = JSON.parse(cfg.cycle_anchor); TG_ANCHOR = (a && a.date) ? a : null; } catch (x) { TG_ANCHOR = null; }
-    }
+    TG_ANCLAS = leerAnclas(cfg);
     return JSON.parse(cfg.overrides || '{}') || {};
   } catch (e) { return {}; }
 }
@@ -949,21 +1060,10 @@ function tgDsToDate(ds) {
 }
 
 // Misma resolucion en 3 capas que getCustody() del panel:
-// 1) override del dia  2) ciclo re-anclado (cycle_anchor)  3) esquema original.
+// 1) override del dia  2) acuerdo vigente en esa fecha  3) esquema original.
 function tgGetCustody(dateStr, overrides) {
   if (overrides && overrides[dateStr]) return overrides[dateStr];
-  var d = tgDsToDate(dateStr);
-  if (TG_ANCHOR && TG_ANCHOR.date) {
-    var dd = Math.round((d.getTime() - tgDsToDate(TG_ANCHOR.date).getTime()) / 86400000);
-    if (dd >= 0) {
-      var slot = TG_CYCLE[((dd % 14) + 14) % 14];
-      if (TG_ANCHOR.who === 'papa') return slot === 'mama' ? 'papa' : 'mama';
-      return slot;
-    }
-  }
-  var diff = Math.round((d.getTime() - tgDsToDate(TG_CYCLE_START).getTime()) / 86400000);
-  if (diff < 0) return null;
-  return TG_CYCLE[((diff % 14) + 14) % 14];
+  return patronAcuerdo(dateStr, TG_ANCLAS);
 }
 
 function tgWhoLabel(who) { return who === 'papa' ? 'PAPÁ' : (who === 'mama' ? 'MAMÁ' : ''); }
@@ -1401,6 +1501,22 @@ function restaurarCustodia20261019() {
              conflictos: conflictos, historialImportado: filas.length };
   });
   if (r && r.ok) props.setProperty('restauracion_20261019', 'hecha');
+  Logger.log(JSON.stringify(r));
+  return r;
+}
+
+// Una sola vez (pedido de Juanma, 09/11/2026): acuerdo 2-2-3 desde el lunes
+// 18/01/2027 arrancando con papá. El 16 y 17/01 siguen con mamá (son cambios
+// manuales que ya existen). No toca nada anterior al 18/01/2027. Correrlo de
+// nuevo no hace nada. Se deshace con el botón "Deshacer" del panel.
+function aplicarAcuerdo20270118() {
+  var ss = SpreadsheetApp.openById(SS_ID);
+  var r = withLock(function() {
+    var anclas = leerAnclas(readConfig(ss, 'juanma'));
+    var ult = anclas.length ? anclas[anclas.length - 1] : null;
+    if (ult && ult.date === '2027-01-18' && ult.who === 'papa') return { ok: true, yaEstaba: true, anchors: anclas };
+    return applyAgreement(ss, 'juanma', { from: '2027-01-18', who: 'papa', drop: '[]', nolog: '0' }, 'owner');
+  });
   Logger.log(JSON.stringify(r));
   return r;
 }
