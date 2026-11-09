@@ -1002,9 +1002,18 @@ function deleteTestClient() {
 // ============================================================
 // ============================================================
 
-// Token del bot de Telegram. IMPORTANTE: si este token se filtró,
-// regeneralo en @BotFather (/revoke) y reemplazá solo esta línea.
-var TG_BOT_TOKEN = 'TOKEN_SOLO_EN_EL_EDITOR';   // copia local/repo: el token real vive sólo en el editor de Apps Script
+// Token del bot de Telegram: vive en Propiedades del script (clave
+// TG_BOT_TOKEN), NO en el código: así ningún deploy lo pisa. (Entre el 01 y el
+// 05/11/2026 se perdió al pegar el archivo del repo en el editor y las alertas
+// dejaron de salir.) Si se filtró: @BotFather → /revoke y cargar el nuevo ahí.
+var TG_BOT_TOKEN = 'TOKEN_SOLO_EN_EL_EDITOR';   // copia local/repo: el token real va en Propiedades del script
+function tgToken() {
+  try {
+    var t = PropertiesService.getScriptProperties().getProperty('TG_BOT_TOKEN');
+    if (t) return ('' + t).trim();
+  } catch (e) {}
+  return (TG_BOT_TOKEN && TG_BOT_TOKEN.indexOf('TOKEN_SOLO') !== 0) ? TG_BOT_TOKEN : '';
+}
 
 // Chat ID de Juanma (destino de las alertas del panel personal).
 var TG_CHAT_ID = '15534655';
@@ -1018,8 +1027,10 @@ var TG_CLIENT_ID = 'juanma';
 
 // ── Envío de mensajes a Telegram ─────────────────────────────
 function tgSend(text) {
-  if (!TG_BOT_TOKEN || !TG_CHAT_ID) return;
-  var url = 'https://api.telegram.org/bot' + TG_BOT_TOKEN + '/sendMessage';
+  var tok = tgToken();
+  if (!tok) { Logger.log('Telegram sin configurar: falta TG_BOT_TOKEN en Propiedades del script'); return; }
+  if (!TG_CHAT_ID) return;
+  var url = 'https://api.telegram.org/bot' + tok + '/sendMessage';
   var payload = {
     chat_id: TG_CHAT_ID,
     text: text,
